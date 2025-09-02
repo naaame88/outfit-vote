@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Outfit Contest</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>.pill{padding:.25rem .75rem;border-radius:9999px;font-size:.75rem;font-weight:600}</style>
+</head>
+<body class="bg-pink-50 text-gray-900">
+  <div class="max-w-5xl mx-auto p-4">
+    <header class="flex items-center justify-between gap-2 mb-4">
+      <h1 class="text-2xl font-bold">🎀 Outfit Contest</h1>
+      <div>
+        {% if contest['status']=='submission' %}<span class="pill bg-pink-200">제출 단계</span>
+        {% elif contest['status']=='voting' %}<span class="pill bg-yellow-200">투표 단계</span>
+        {% else %}<span class="pill bg-green-200">결과 공개</span>{% endif %}
+      </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="space-y-2 mb-4">
+          {% for cat, msg in messages %}
+            <div class="rounded-xl px-4 py-3 text-sm
+              {% if cat=='error' %} bg-red-100 text-red-800
+              {% elif cat=='ok' %} bg-green-100 text-green-800
+              {% else %} bg-gray-100 text-gray-800 {% endif %}">
+              {{ msg }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <section class="mb-4">
+      {% if contest['status']=='submission' %}
+        <div class="text-sm text-gray-700">현재 제출 수: <b>{{ entries_count }}</b> / {{ contest['max_entries'] }}</div>
+        <p class="text-xs text-gray-600">선착순 {{ contest['max_entries'] }}명·1인 1제출</p>
+      {% elif contest['status']=='voting' %}
+        <div class="text-sm text-gray-700">내 남은 표: <b>{{ votes_left }}</b> / {{ contest['votes_per_user'] }}</div>
+        <p class="text-xs text-gray-600">제출자는 투표 불가. 투표 중엔 득표수 숨김.</p>
+      {% else %}
+        <p class="text-sm text-gray-700">투표 종료 — 결과 공개</p>
+      {% endif %}
+    </section>
+
+    {% if contest['status']=='submission' %}
+      {% if i_submitted %}
+        <div class="bg-white rounded-2xl shadow p-4 mb-6 text-sm">이미 제출했습니다. 투표 오픈을 기다려 주세요.</div>
+      {% elif entries_count >= contest['max_entries'] %}
+        <div class="bg-white rounded-2xl shadow p-4 mb-6 text-sm">제출이 마감되었습니다. 곧 투표가 시작됩니다.</div>
+      {% else %}
+        <form class="bg-white rounded-2xl shadow p-4 mb-6 grid gap-3" action="{{ url_for('submit') }}" method="post" enctype="multipart/form-data">
+          <h2 class="font-semibold">코디 제출하기</h2>
+          <label class="text-sm">코디 제목
+            <input name="title" class="mt-1 w-full rounded-xl border px-3 py-2" placeholder="예: Pastel Mood">
+          </label>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <label class="text-sm">이미지 파일 업로드
+              <input name="image_file" type="file" accept="image/*" class="mt-1 w-full text-sm">
+              <span class="block text-xs text-gray-500 mt-1">또는 아래에 이미지 URL을 붙여넣기</span>
+            </label>
+            <label class="text-sm">이미지 URL
+              <input name="image_url" class="mt-1 w-full rounded-xl border px-3 py-2" placeholder="https://...">
+            </label>
+          </div>
+          <button class="mt-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white px-4 py-2">제출</button>
+          <p class="text-xs text-gray-500">※ 10명이 채워지면 자동으로 투표가 열리고, 투표 마감은 7일 뒤입니다.</p>
+        </form>
+      {% endif %}
+    {% endif %}
+
+    <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {% for o in outfits %}
+        <article class="bg-white rounded-2xl shadow overflow-hidden flex flex-col">
+          <img src="{{ o['image_url'] }}" alt="{{ o['title'] }}" class="w-full h-56 object-cover">
+          <div class="p-3 flex-1 flex flex-col">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="font-semibold truncate">{{ o['title'] or 'Untitled' }}</h3>
+              {% if contest['status']=='closed' %}
+                <span class="text-xs bg-green-100 text-green-800 rounded-full px-2 py-0.5">👍 {{ counts.get(o['id'],0) }}</span>
+              {% endif %}
+            </div>
+            {% if contest['status']=='voting' %}
+              <form action="{{ url_for('vote', oid=o['id']) }}" method="post" class="mt-auto">
+                <button class="mt-3 w-full rounded-xl border px-3 py-2 hover:bg-gray-50 disabled:opacity-50"
+                        {% if i_submitted or votes_left==0 %}disabled{% endif %}>투표하기</button>
+              </form>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </section>
+  </div>
+</body>
+</html>
