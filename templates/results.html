@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Results · {{ contest['title'] }}</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}"/>
+</head>
+<body class="result-bg min-h-screen text-stone-700 relative overflow-x-hidden">
+  <main class="relative max-w-7xl mx-auto px-4 py-10">
+    <header class="text-center mb-8">
+      <h1 class="halo text-4xl sm:text-5xl md:text-6xl" style="font-family:'Playfair Display','Marcellus',serif;">
+        Congratulation!
+      </h1>
+      <p class="mt-2 text-sm text-stone-600">{{ contest['title'] }}</p>
+    </header>
+
+    {% if top3|length == 0 %}
+      <div class="glass p-6 rounded-2xl text-center">집계할 결과가 없습니다.</div>
+    {% else %}
+      <!-- 레이아웃: 좌측 2/3에 1등, 우측 1/3에 2·3등 스택 -->
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <!-- 1등 카드 (2칸 차지) -->
+        {% set first = top3[0] %}
+        <article class="card-angel lg:col-span-2 relative overflow-hidden flex flex-col">
+          <div class="rank-badge rank-1">1</div>
+
+          <!-- 이미지 영역: flex 중앙 정렬 -->
+          <div class="flex items-center justify-center" style="height:70vh;">
+            <img src="{{ first['image_url'] }}" alt="{{ first['title'] or '1st' }}"
+                 class="max-h-full max-w-full object-contain" />
+          </div>
+
+          <!-- 텍스트 영역 -->
+          <div class="p-5 text-center">
+            <h3 class="font-semibold text-2xl mb-1">{{ first['title'] or 'Untitled Outfit' }}</h3>
+            <p class="text-stone-600">표 <strong>{{ first['votes'] }}</strong></p>
+          </div>
+        </article>
+
+        <!-- 2, 3등 스택 -->
+        <div class="space-y-6">
+          {% if top3|length > 1 %}
+            {% set second = top3[1] %}
+            <article class="card-angel relative overflow-hidden flex flex-col">
+              <div class="rank-badge rank-2">2</div>
+
+              <!-- 이미지 영역 -->
+              <div class="flex items-center justify-center" style="height:40vh;">
+                <img src="{{ second['image_url'] }}" alt="{{ second['title'] or '2nd' }}"
+                     class="max-h-full max-w-full object-contain" />
+              </div>
+
+              <!-- 텍스트 영역 -->
+              <div class="p-4 text-center">
+                <h3 class="font-semibold text-lg mb-1">{{ second['title'] or 'Untitled Outfit' }}</h3>
+                <p class="text-stone-600">표 <strong>{{ second['votes'] }}</strong></p>
+              </div>
+            </article>
+          {% endif %}
+
+          {% if top3|length > 2 %}
+            {% set third = top3[2] %}
+            <article class="card-angel relative overflow-hidden flex flex-col">
+              <div class="rank-badge rank-3">3</div>
+
+              <!-- 이미지 영역 -->
+              <div class="flex items-center justify-center" style="height:40vh;">
+                <img src="{{ third['image_url'] }}" alt="{{ third['title'] or '3rd' }}"
+                     class="max-h-full max-w-full object-contain" />
+              </div>
+
+              <!-- 텍스트 영역 -->
+              <div class="p-4 text-center">
+                <h3 class="font-semibold text-lg mb-1">{{ third['title'] or 'Untitled Outfit' }}</h3>
+                <p class="text-stone-600">표 <strong>{{ third['votes'] }}</strong></p>
+              </div>
+            </article>
+          {% endif %}
+        </div> <!-- /space-y-6 -->
+      </section>
+
+      <div class="text-center mt-10">
+        <a href="{{ url_for('index') }}" class="btn-angel">메인으로</a>
+      </div>
+    {% endif %}
+  </main>
+</body>
+</html>
+
