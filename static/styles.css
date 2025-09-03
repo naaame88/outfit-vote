@@ -1,0 +1,9 @@
+/* static/styles.css */
+html, body { height: 100%; }
+body.custom-bg {
+  /* 이미지 경로는 반드시 /static/ 하위여야 함 */
+  background:
+    linear-gradient(to bottom right, rgba(255,255,255,.55), rgba(255,255,255,.55)), /* 밝은 오버레이 */
+    url('/static/bg.jpg') center / cover fixed no-repeat;
+  background-color: #fbe7f1; /* 이미지 로드 실패시 대체색 */
+}
