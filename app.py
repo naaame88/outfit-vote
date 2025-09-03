@@ -265,5 +265,6 @@ def admin_delete_all():
 init_db()
 
 if __name__ == "__main__":
-    # 로컬 개발용
-    app.run(debug=True)
+    import os
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
