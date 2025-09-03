@@ -9,15 +9,22 @@
 </head>
 <body class="bg-pink-50 text-gray-900">
   <div class="max-w-5xl mx-auto p-4">
+
+    <!-- 헤더 + 커스텀 배너 슬롯 -->
     <header class="flex items-center justify-between gap-2 mb-4">
       <h1 class="text-2xl font-bold">🎀 Outfit Contest</h1>
       <div>
-        {% if contest['status']=='submission' %}<span class="pill bg-pink-200">제출 단계</span>
-        {% elif contest['status']=='voting' %}<span class="pill bg-yellow-200">투표 단계</span>
-        {% else %}<span class="pill bg-green-200">결과 공개</span>{% endif %}
+        {% if contest['status']=='submission' %}
+          <span class="pill bg-pink-200">제출 단계</span>
+        {% elif contest['status']=='voting' %}
+          <span class="pill bg-yellow-200">투표 단계</span>
+        {% else %}
+          <span class="pill bg-green-200">결과 공개</span>
+        {% endif %}
       </div>
     </header>
 
+    <!-- 플래시 메시지 -->
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="space-y-2 mb-4">
@@ -33,25 +40,40 @@
       {% endif %}
     {% endwith %}
 
+    <!-- 상단 상태 안내 + (관리자) 전체 삭제 -->
     <section class="mb-4">
-      {% if contest['status']=='submission' %}
-        <div class="text-sm text-gray-700">현재 제출 수: <b>{{ entries_count }}</b> / {{ contest['max_entries'] }}</div>
-        <p class="text-xs text-gray-600">선착순 {{ contest['max_entries'] }}명·1인 1제출</p>
-      {% elif contest['status']=='voting' %}
-        <div class="text-sm text-gray-700">내 남은 표: <b>{{ votes_left }}</b> / {{ contest['votes_per_user'] }}</div>
-        <p class="text-xs text-gray-600">제출자는 투표 불가. 투표 중엔 득표수 숨김.</p>
-      {% else %}
-        <p class="text-sm text-gray-700">투표 종료 — 결과 공개</p>
-      {% endif %}
+      <div class="flex items-center justify-between">
+        <div>
+          {% if contest['status']=='submission' %}
+            <div class="text-sm text-gray-700">현재 제출 수: <b>{{ entries_count }}</b> / {{ contest['max_entries'] }}</div>
+            <p class="text-xs text-gray-600">선착순 {{ contest['max_entries'] }}명 · 1인 1제출</p>
+          {% elif contest['status']=='voting' %}
+            <div class="text-sm text-gray-700">내 남은 표: <b>{{ votes_left }}</b> / {{ contest['votes_per_user'] }}</div>
+            <p class="text-xs text-gray-600">제출자는 투표 불가. 투표 중에는 득표수 숨김.</p>
+          {% else %}
+            <p class="text-sm text-gray-700">투표 종료 — 결과 공개</p>
+          {% endif %}
+        </div>
+
+        {% if show_admin %}
+          <form action="{{ url_for('admin_delete_all', key=admin_key) }}" method="post">
+            <button class="rounded-xl bg-red-600 text-white px-4 py-2 hover:bg-red-700 text-sm">
+              전체 삭제(관리자)
+            </button>
+          </form>
+        {% endif %}
+      </div>
     </section>
 
+    <!-- 제출 폼: 제출 단계에만 -->
     {% if contest['status']=='submission' %}
       {% if i_submitted %}
         <div class="bg-white rounded-2xl shadow p-4 mb-6 text-sm">이미 제출했습니다. 투표 오픈을 기다려 주세요.</div>
       {% elif entries_count >= contest['max_entries'] %}
         <div class="bg-white rounded-2xl shadow p-4 mb-6 text-sm">제출이 마감되었습니다. 곧 투표가 시작됩니다.</div>
       {% else %}
-        <form class="bg-white rounded-2xl shadow p-4 mb-6 grid gap-3" action="{{ url_for('submit') }}" method="post" enctype="multipart/form-data">
+        <form class="bg-white rounded-2xl shadow p-4 mb-6 grid gap-3"
+              action="{{ url_for('submit') }}" method="post" enctype="multipart/form-data">
           <h2 class="font-semibold">코디 제출하기</h2>
           <label class="text-sm">코디 제목
             <input name="title" class="mt-1 w-full rounded-xl border px-3 py-2" placeholder="예: Pastel Mood">
@@ -66,32 +88,54 @@
             </label>
           </div>
           <button class="mt-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white px-4 py-2">제출</button>
-          <p class="text-xs text-gray-500">※ 10명이 채워지면 자동으로 투표가 열리고, 투표 마감은 7일 뒤입니다.</p>
+          <p class="text-xs text-gray-500">※ 20명이 채워지면 자동으로 투표가 열리고, 투표 마감은 7일 뒤입니다.</p>
         </form>
       {% endif %}
     {% endif %}
 
-    <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {% for o in outfits %}
-        <article class="bg-white rounded-2xl shadow overflow-hidden flex flex-col">
-          <img src="{{ o['image_url'] }}" alt="{{ o['title'] }}" class="w-full h-56 object-cover">
-          <div class="p-3 flex-1 flex flex-col">
-            <div class="flex items-center justify-between gap-2">
-              <h3 class="font-semibold truncate">{{ o['title'] or 'Untitled' }}</h3>
-              {% if contest['status']=='closed' %}
-                <span class="text-xs bg-green-100 text-green-800 rounded-full px-2 py-0.5">👍 {{ counts.get(o['id'],0) }}</span>
+    <!-- 갤러리: 제출 전에는 기본적으로 숨기되, '제출자'는 볼 수 있음 -->
+    {% if show_gallery %}
+      <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {% for o in outfits %}
+          <article class="bg-white rounded-2xl shadow overflow-hidden flex flex-col">
+            <img src="{{ o['image_url'] }}" alt="{{ o['title'] }}" class="w-full h-56 object-cover">
+            <div class="p-3 flex-1 flex flex-col">
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="font-semibold truncate">{{ o['title'] or 'Untitled' }}</h3>
+                {% if contest['status']=='closed' %}
+                  <span class="text-xs bg-green-100 text-green-800 rounded-full px-2 py-0.5">
+                    👍 {{ counts.get(o['id'],0) }}
+                  </span>
+                {% endif %}
+              </div>
+
+              {% if contest['status']=='voting' %}
+                <form action="{{ url_for('vote', oid=o['id']) }}" method="post" class="mt-auto">
+                  <button class="mt-3 w-full rounded-xl border px-3 py-2 hover:bg-gray-50 disabled:opacity-50"
+                          {% if i_submitted or votes_left==0 %}disabled{% endif %}>
+                    투표하기
+                  </button>
+                </form>
+              {% endif %}
+
+              {% if show_admin %}
+                <form action="{{ url_for('admin_delete', oid=o['id'], key=admin_key) }}" method="post" class="mt-2">
+                  <button class="w-full rounded-xl bg-red-500 text-white px-3 py-2 hover:bg-red-600">
+                    삭제(관리자)
+                  </button>
+                </form>
               {% endif %}
             </div>
-            {% if contest['status']=='voting' %}
-              <form action="{{ url_for('vote', oid=o['id']) }}" method="post" class="mt-auto">
-                <button class="mt-3 w-full rounded-xl border px-3 py-2 hover:bg-gray-50 disabled:opacity-50"
-                        {% if i_submitted or votes_left==0 %}disabled{% endif %}>투표하기</button>
-              </form>
-            {% endif %}
-          </div>
-        </article>
-      {% endfor %}
-    </section>
+          </article>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <!-- 하단 배너/이미지 슬롯(꾸미기용) -->
+    <div class="mt-8">
+      <!-- 여기에 공지 이미지/스폰서 배너 등을 자유롭게 삽입 -->
+    </div>
+
   </div>
 </body>
 </html>
