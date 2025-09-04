@@ -397,10 +397,19 @@ def results():
 
     return render_template("results.html", contest=contest, top3=top3)
 
+@app.post("/admin/close")
+def admin_close():
+    if not _require_admin():
+        return "Forbidden", 403
+    con = db(); cur = con.cursor()
+    cur.execute("update contests set status='closed' where id=1")
+    con.commit(); con.close()
+    flash("투표가 강제로 종료되었습니다.", "ok")
+    return redirect(url_for("index"))
+
 init_db()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
 
 

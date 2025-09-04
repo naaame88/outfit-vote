@@ -95,11 +95,15 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {% for o in outfits %}
               <article class="card-angel group relative">
-                <!-- 관리자 삭제 버튼 -->
+                <!-- 관리자 버튼 -->
                 {% if show_admin %}
                   <form method="post" action="{{ url_for('admin_delete', oid=o['id']) }}"
                         class="absolute z-10 right-3 top-3">
                     <button type="submit" class="admin-x" title="삭제">×</button>
+                  </form>
+
+                  <form method="post" action="/admin/close" style="margin-top:1rem;"onsubmit="return confirm('정말 지금 투표를 종료할까요?');">
+                    <button class="btn-danger">투표 종료</button>
                   </form>
                 {% endif %}
 
@@ -143,7 +147,11 @@
           <button type="submit" class="btn-ghost">[관리자] 모든 코디 삭제</button>
         </form>
       </section>
+      <form method="post" action="/admin/close" style="margin-top:1rem;"onsubmit="return confirm('정말 지금 투표를 종료할까요?');">
+        <button class="btn-danger">투표 종료</button>
+      </form>
     {% endif %}
+
   </main>
 </body>
 </html>
