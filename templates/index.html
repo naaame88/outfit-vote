@@ -11,33 +11,19 @@
   <!-- 클래식 무드 폰트 -->
   <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Playfair+Display:wght@500;700&display=swap" rel="stylesheet">
 
-  <!-- 커스텀 CSS (배경 .angel-bg는 기존 그대로 사용) -->
+  <!-- 커스텀 CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body class="angel-bg min-h-screen text-stone-700">
-  <!-- 은은한 화이트 베일 오버레이 (배경은 그대로, 가독성 ↑) -->
+  <!-- 은은한 화이트 베일 오버레이 -->
   <div class="fixed inset-0 pointer-events-none bg-white/55"></div>
 
   <main class="relative max-w-6xl mx-auto px-4 py-8">
     <!-- 헤더 -->
     <header class="flex flex-col items-center gap-3 mb-8 text-center">
-      <h1 class="halo font-semibold tracking-wide"
-          style="font-family:'Playfair Display','Marcellus',serif;">
+      <h1 class="halo font-semibold tracking-wide" style="font-family:'Playfair Display','Marcellus',serif;">
         <span class="text-4xl sm:text-5xl md:text-6xl">{{ contest['title'] }}</span>
       </h1>
-
-      {% if show_admin and contest['status'] == 'voting' %}
-      <form method="post" action="{{ url_for('admin_close') }}"onsubmit="return confirm('정말 투표를 종료할까요?');">
-        <button type="submit" class="btn-danger btn-shadow px-3 py-2 rounded-lg">
-          ✦ 투표 종료
-        </button>
-      </form>
-      {% endif %}
-
-      <!-- ✨ 결과 버튼 (상태가 closed일 때만 보임) -->
-       {% if contest['status'] == 'closed' %}
-       <a href="{{ url_for('results') }}" class="btn-angel mt-2">결과 보기</a>
-       {% endif %}
 
       <!-- 상태 배지 -->
       {% set s = contest['status'] %}
@@ -55,9 +41,23 @@
         <span class="i-angel"></span>{{ label }}
       </span>
 
-      <p class="text-sm text-stone-600">남은 표:
-        <span class="font-semibold">{{ votes_left }}</span> / {{ contest['votes_per_user'] }}
+      <p class="text-sm text-stone-600">
+        남은 표: <span class="font-semibold">{{ votes_left }}</span> / {{ contest['votes_per_user'] }}
       </p>
+
+      <!-- 관리자: 투표 종료 버튼(투표 중일 때만) / 결과 보기(종료 후) -->
+      {% if show_admin %}
+        <div class="mt-2 flex items-center gap-3">
+          {% if contest['status'] == 'voting' %}
+            <form method="post" action="{{ url_for('admin_close') }}" onsubmit="return confirm('정말 투표를 종료할까요?');">
+              <button type="submit" class="btn-danger btn-shadow px-3 py-2 rounded-lg">✦ 투표 종료</button>
+            </form>
+          {% endif %}
+          {% if contest['status'] == 'closed' %}
+            <a href="{{ url_for('results') }}" class="btn-angel px-3 py-2 rounded-lg">결과 보기</a>
+          {% endif %}
+        </div>
+      {% endif %}
     </header>
 
     <!-- 플래시 메시지 -->
@@ -79,13 +79,10 @@
       <section class="glass p-5 rounded-2xl shadow-xl mb-8">
         <h2 class="section-title mb-4">코디 제출</h2>
         <form method="post" action="{{ url_for('submit') }}" enctype="multipart/form-data" class="space-y-3">
-          <input type="text" name="title" placeholder="닉네임/미니코드를 입력하세요. ex)은연 incag"
-            class="input angel-input" />
+          <input type="text" name="title" placeholder="닉네임/미니코드를 입력하세요. ex)은연 incag" class="input angel-input" />
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input type="text" name="image_url" placeholder="이미지 URL (파일을 첨부하기 어려운 경우 url 사용 가능)"
-              class="input angel-input" />
-            <input type="file" name="image_file" accept="image/*"
-              class="file-input angel-input" />
+            <input type="text" name="image_url" placeholder="이미지 URL (파일 업로드가 어려우면 URL 사용)" class="input angel-input" />
+            <input type="file" name="image_file" accept="image/*" class="file-input angel-input" />
           </div>
           <button type="submit" class="btn-angel">제출하기</button>
         </form>
@@ -103,10 +100,9 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {% for o in outfits %}
               <article class="card-angel group relative">
-                <!-- 관리자 버튼 -->
+                <!-- 관리자 X 버튼 -->
                 {% if show_admin %}
-                  <form method="post" action="{{ url_for('admin_delete', oid=o['id']) }}"
-                        class="absolute z-10 right-3 top-3">
+                  <form method="post" action="{{ url_for('admin_delete', oid=o['id']) }}" class="absolute z-10 right-3 top-3">
                     <button type="submit" class="admin-x" title="삭제">×</button>
                   </form>
                 {% endif %}
@@ -126,9 +122,7 @@
 
                   {% if contest['status'] == 'voting' %}
                     <form method="post" action="{{ url_for('vote', oid=o['id']) }}">
-                      <button type="submit" class="btn-vote">
-                        투표하기
-                      </button>
+                      <button type="submit" class="btn-vote">투표하기</button>
                     </form>
                   {% else %}
                     <div class="text-xs text-stone-500 italic">지금은 투표 기간이 아닙니다</div>
@@ -145,23 +139,17 @@
       </section>
     {% endif %}
 
+    <!-- 관리자: 전체 삭제 -->
     {% if show_admin %}
       <section class="mt-8 text-center">
         <form method="post" action="{{ url_for('admin_delete_all') }}">
-          <button type="submit" class="btn-ghost">[관리자] 모든 코디 삭제</button>
+          <button type="submit" class="btn-angel btn-outline">[관리자] 모든 코디 삭제</button>
         </form>
       </section>
     {% endif %}
-
-    {# 관리자만 + 투표 중(voting)일 때만 보이게 #}
-    {% if show_admin and contest['status'] == 'voting' %}
-    <form method="post" action="/admin/close" class="inline">
-      <button class="btn-angel btn-danger">투표 종료</button>
-    </form>    
-    {% endif %}
-
   </main>
 </body>
 </html>
+
 
 
