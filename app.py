@@ -417,5 +417,7 @@ def admin_status():
     con = db(); cur = con.cursor()
     cur.execute("select status, voting_opened_at, voting_ends_at from contests where id=1")
     row = cur.fetchone(); con.close()
+    if not row:
+        return "No contest found"
     return f"status={row['status']} opened={row['voting_opened_at']} ends={row['voting_ends_at']}"
-
+    
