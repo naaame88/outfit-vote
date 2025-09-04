@@ -31,6 +31,12 @@
        <a href="{{ url_for('results') }}" class="btn-angel mt-2">결과 보기</a>
        {% endif %}
 
+      {% if show_admin and contest['status'] == 'voting' %}
+      <form method="post" action="{{ url_for('admin_close') }}" class="mt-2">
+        <button type="submit"class="btn-danger btn-shadow inline-flex items-center justify-center px-4 py-2 rounded-lg">투표 종료</button>
+      </form>
+      {% endif %}
+
       <!-- 상태 배지 -->
       {% set s = contest['status'] %}
       {% if s == 'submission' %}
@@ -101,10 +107,6 @@
                         class="absolute z-10 right-3 top-3">
                     <button type="submit" class="admin-x" title="삭제">×</button>
                   </form>
-
-                  <form method="post" action="/admin/close" style="margin-top:1rem;"onsubmit="return confirm('정말 지금 투표를 종료할까요?');">
-                    <button class="btn-danger">투표 종료</button>
-                  </form>
                 {% endif %}
 
                 <div class="overflow-hidden rounded-t-2xl">
@@ -147,9 +149,6 @@
           <button type="submit" class="btn-ghost">[관리자] 모든 코디 삭제</button>
         </form>
       </section>
-      <form method="post" action="/admin/close" style="margin-top:1rem;"onsubmit="return confirm('정말 지금 투표를 종료할까요?');">
-        <button class="btn-danger">투표 종료</button>
-      </form>
     {% endif %}
 
   </main>
