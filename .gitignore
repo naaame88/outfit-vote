@@ -1,5 +1,27 @@
+# --- Python 기본 ---
 __pycache__/
 *.pyc
-app.db
-static/uploads/*
+*.pyo
+*.pyd
+*.log
+
+# --- 가상환경 ---
+venv/
 .env
+
+# --- 데이터베이스 ---
+app.db
+
+# --- 업로드/캐시 ---
+static/uploads/*
+*.sqlite3
+
+# --- OS/에디터 잡파일 ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- 기타 ---
+*.bak
+*.swp
