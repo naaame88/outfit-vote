@@ -34,8 +34,8 @@ def init_db():
       created_at timestamp not null default CURRENT_TIMESTAMP,
       voting_opened_at text, -- ISO8601 문자열로 저장
       voting_ends_at text,   -- ISO8601 문자열로 저장
-      max_entries integer not null default 20,   -- 총 수용 인원(기본 20명)
-      votes_per_user integer not null default 3  -- 1인 3표
+      max_entries integer not null default 10,   -- 총 수용 인원(기본 10명)
+      votes_per_user integer not null default 2  -- 1인 2표
     );
     create table if not exists outfits(
       id integer primary key autoincrement,
@@ -262,7 +262,7 @@ def submit():
     count = cur.fetchone()["c"]
     if count >= contest["max_entries"]:
         opened = datetime.datetime.utcnow().isoformat()
-        ends = (datetime.datetime.utcnow() + datetime.timedelta(minutes=1)).isoformat()
+        ends = (datetime.datetime.utcnow() + datetime.timedelta(days=3)).isoformat()
         cur.execute("""
           update contests
           set status='voting', voting_opened_at=?, voting_ends_at=?
