@@ -412,4 +412,10 @@ init_db()
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
 
+@app.get("/admin/status")
+def admin_status():
+    con = db(); cur = con.cursor()
+    cur.execute("select status, voting_opened_at, voting_ends_at from contests where id=1")
+    row = cur.fetchone(); con.close()
+    return f"status={row['status']} opened={row['voting_opened_at']} ends={row['voting_ends_at']}"
 
