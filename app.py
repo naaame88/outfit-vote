@@ -262,7 +262,7 @@ def submit():
     count = cur.fetchone()["c"]
     if count >= contest["max_entries"]:
         opened = datetime.datetime.utcnow().isoformat()
-        ends = (datetime.datetime.utcnow() + datetime.timedelta(days=7)).isoformat()
+        ends = (datetime.datetime.utcnow() + datetime.timedelta(minutes=1)).isoformat()
         cur.execute("""
           update contests
           set status='voting', voting_opened_at=?, voting_ends_at=?
