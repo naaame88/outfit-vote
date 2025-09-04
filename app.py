@@ -397,7 +397,7 @@ def results():
 
     return render_template("results.html", contest=contest, top3=top3)
 
-@app.post("/admin/close")
+@app.route("/admin/close", methods=["GET", "POST"])
 def admin_close():
     if not _require_admin():
         return "Forbidden", 403
@@ -420,4 +420,4 @@ def admin_status():
     if not row:
         return "No contest found"
     return f"status={row['status']} opened={row['voting_opened_at']} ends={row['voting_ends_at']}"
-    
+
