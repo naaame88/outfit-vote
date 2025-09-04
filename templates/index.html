@@ -26,16 +26,18 @@
         <span class="text-4xl sm:text-5xl md:text-6xl">{{ contest['title'] }}</span>
       </h1>
 
+      {% if show_admin and contest['status'] == 'voting' %}
+      <form method="post" action="{{ url_for('admin_close') }}"onsubmit="return confirm('정말 투표를 종료할까요?');">
+        <button type="submit" class="btn-danger btn-shadow px-3 py-2 rounded-lg">
+          ✦ 투표 종료
+        </button>
+      </form>
+      {% endif %}
+
       <!-- ✨ 결과 버튼 (상태가 closed일 때만 보임) -->
        {% if contest['status'] == 'closed' %}
        <a href="{{ url_for('results') }}" class="btn-angel mt-2">결과 보기</a>
        {% endif %}
-
-      {% if show_admin and contest['status'] == 'voting' %}
-      <form method="post" action="{{ url_for('admin_close') }}" class="mt-2">
-        <button type="submit"class="btn-danger btn-shadow inline-flex items-center justify-center px-4 py-2 rounded-lg">투표 종료</button>
-      </form>
-      {% endif %}
 
       <!-- 상태 배지 -->
       {% set s = contest['status'] %}
