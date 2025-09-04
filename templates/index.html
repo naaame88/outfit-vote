@@ -153,6 +153,15 @@
       </section>
     {% endif %}
 
+    {# 관리자만 + 투표 중(voting)일 때만 보이게 #}
+    {% if show_admin and contest['status'] == 'voting' %}
+    <form method="POST" action="{{ url_for('admin_close') }}" class="inline">
+      <button type="submit" class="btn-angel btn-danger">
+        ✦ 투표 종료
+      </button>
+    </form>
+    {% endif %}
+
   </main>
 </body>
 </html>
