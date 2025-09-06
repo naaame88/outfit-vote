@@ -9,9 +9,10 @@ from flask import (
 )
 from werkzeug.exceptions import RequestEntityTooLarge
 
-# --- Postgres driver ---
-import psycopg2
-from psycopg2 import extras, errors
+# === psycopg v3 ===
+import psycopg
+from psycopg.rows import dict_row
+from psycopg import errors
 
 # ============================================================================
 # 기본 설정
@@ -26,26 +27,25 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "changeme")  # 배포 시 환경변수로 교체
 
-# 한국시간 기준 하루 2표
+# 한국시간 기준 하루 표 수
 VOTES_PER_DAY = int(os.environ.get("VOTES_PER_DAY", 2))
 # 투표 기간(일) 기본 5일
 VOTING_PERIOD_DAYS = int(os.environ.get("VOTING_PERIOD_DAYS", 5))
 
 # ============================================================================
-# DB 유틸 (Supabase Postgres)
+# DB 유틸 (Supabase/Heroku Postgres)
 # ============================================================================
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL env var is required (Supabase Postgres connection string)")
+    raise RuntimeError("DATABASE_URL env var is required (Postgres connection string)")
 
 def db():
-    # 매 요청마다 새 연결(간단 구현)
-    return psycopg2.connect(DATABASE_URL, cursor_factory=extras.RealDictCursor)
-
+    # psycopg v3 연결. 각 요청 때마다 새 연결(간단 구현)
+    return psycopg.connect(DATABASE_URL)
 
 def init_db():
     """idempotent: 여러 번 호출돼도 안전"""
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     # 스키마
     cur.execute(
         """
@@ -57,7 +57,7 @@ def init_db():
           voting_opened_at timestamptz,
           voting_ends_at timestamptz,
           max_entries integer not null default 10,    -- 총 수용 인원
-          votes_per_user integer not null default 2   -- (의미 변경) '하루' 표 수
+          votes_per_user integer not null default 2   -- (하루 표 수)
         );
 
         create table if not exists outfits(
@@ -78,7 +78,7 @@ def init_db():
         );
         """
     )
-    # 유니크 인덱스(한 사람이 같은 작품에 중복 투표 방지)
+    # 유니크 인덱스(한 사람이 같은 작품에 중복 투표 방지, 1인 1제출)
     cur.execute(
         """
         do $$ begin
@@ -99,16 +99,15 @@ def init_db():
             (VOTES_PER_DAY,)
         )
     else:
-        # votes_per_user를 .env의 VOTES_PER_DAY와 맞춰둠(선택)
+        # votes_per_user를 .env의 VOTES_PER_DAY와 맞춤(선택)
         cur.execute("update contests set votes_per_user=%s where id=1", (VOTES_PER_DAY,))
     conn.commit(); cur.close(); conn.close()
-
 
 # ============================================================================
 # 쿠키/보안 유틸
 # ============================================================================
 def ensure_voter_cookie(resp, voter_id):
-    """응답에 voter_id 쿠키를 보장(없으면 생성)"""
+    """응답에 voter_id 쿠키 보장(없으면 생성)"""
     if not voter_id:
         voter_id = str(uuid.uuid4())
     resp.set_cookie(
@@ -154,7 +153,7 @@ def sniff_is_image(path):
 # ============================================================================
 def phase_auto_close_if_needed():
     """voting 종료 시간이 지났으면 closed로 전환"""
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select status, voting_ends_at from contests where id=%s", (1,))
     row = cur.fetchone()
     if row and row["status"] == "voting" and row["voting_ends_at"]:
@@ -162,7 +161,6 @@ def phase_auto_close_if_needed():
             cur.execute("update contests set status='closed' where id=1 and status='voting'")
             conn.commit()
     cur.close(); conn.close()
-
 
 # ============================================================================
 # 에러 핸들러
@@ -172,14 +170,11 @@ def handle_large_file(e):
     flash("업로드 용량 제한(8MB)을 초과했습니다.", "error")
     return redirect(url_for("index"))
 
-
 # ============================================================================
-# 도우미: 오늘(한국시간) 날짜 비교용 WHERE 절
-#   - created_at AT TIME ZONE 'Asia/Seoul' ::date
+# '오늘'(한국시간) 판별용 SQL
 # ============================================================================
 DATE_TZ = "Asia/Seoul"
 TODAY_SQL = f"(created_at AT TIME ZONE '{DATE_TZ}')::date = (now() AT TIME ZONE '{DATE_TZ}')::date"
-
 
 # ============================================================================
 # 라우트
@@ -189,7 +184,7 @@ def index():
     phase_auto_close_if_needed()
     voter_id = get_voter_id() or str(uuid.uuid4())
 
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
 
     # 대회 정보
     cur.execute("select * from contests where id=%s", (1,))
@@ -259,7 +254,6 @@ def index():
     ))
     return ensure_voter_cookie(resp, voter_id)
 
-
 @app.post("/submit")
 def submit():
     voter_id, redirect_resp = ensure_voter()
@@ -270,7 +264,7 @@ def submit():
     image_url = (request.form.get("image_url") or "").strip()
     file = request.files.get("image_file")
 
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select * from contests where id=%s", (1,))
     contest = cur.fetchone()
 
@@ -333,7 +327,7 @@ def submit():
         flash("제출 처리 중 충돌이 발생했습니다. 다시 시도해 주세요.", "error")
         return redirect(url_for("index"))
 
-    # 정원 도달 시 자동으로 투표 시작(기간: 환경변수 또는 기본 5일)
+    # 정원 도달 시 자동 투표 시작(기간: 기본 5일)
     cur.execute("select count(*) as c from outfits where contest_id=%s", (1,))
     count = cur.fetchone()["c"]
     if count >= contest["max_entries"]:
@@ -356,15 +350,14 @@ def submit():
     resp = redirect(url_for("index"))
     return ensure_voter_cookie(resp, voter_id)
 
-
 @app.post("/vote/<int:oid>")
 def vote(oid):
-    """하루 2표(한국시간 기준), 자기 작품 투표 금지, 작품당 중복 투표 금지"""
+    """하루 2표(한국시간), 자기 작품 투표 금지, 작품당 중복 투표 금지"""
     voter_id, redirect_resp = ensure_voter()
     if redirect_resp:
         return redirect_resp
 
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select * from contests where id=%s", (1,))
     contest = cur.fetchone()
     if contest["status"] != "voting":
@@ -400,7 +393,7 @@ def vote(oid):
         flash("자기 작품에는 투표할 수 없습니다.", "error")
         return redirect(url_for("index"))
 
-    # 작품당 중복 투표 방지(같은 날 여러 번도 금지) — uniq 인덱스로 보장
+    # 작품당 중복 투표 방지 — uniq 인덱스로 보장
     try:
         cur.execute("insert into votes(contest_id,outfit_id,voter_id) values(%s,%s,%s)", (1, oid, voter_id))
         conn.commit()
@@ -414,9 +407,8 @@ def vote(oid):
     resp = redirect(url_for("index"))
     return ensure_voter_cookie(resp, voter_id)
 
-
 # ============================================================================
-# 관리자: 개별/전체 삭제, 초기화, 강제 시작/종료
+# 관리자: 삭제/초기화/강제 시작/종료
 # ============================================================================
 def _delete_local_image_if_exists(image_url: str):
     if image_url and image_url.startswith("/static/uploads/"):
@@ -435,7 +427,7 @@ def admin_delete(oid):
     if not _require_admin():
         return "Forbidden", 403
 
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select image_url from outfits where id=%s and contest_id=%s", (oid, 1))
     row = cur.fetchone()
     if row:
@@ -453,7 +445,7 @@ def admin_delete_all():
     if not _require_admin():
         return "Forbidden", 403
 
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select image_url from outfits where contest_id=%s", (1,))
     for r in cur.fetchall():
         _delete_local_image_if_exists(r["image_url"])
@@ -468,7 +460,7 @@ def admin_reset():
     if not _require_admin():
         return "Forbidden", 403
 
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     # 업로드 파일 삭제
     cur.execute("select image_url from outfits where contest_id=%s", (1,))
     for r in cur.fetchall():
@@ -495,7 +487,7 @@ def admin_reset():
 
 @app.get("/admin/status")
 def admin_status():
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select status, voting_opened_at, voting_ends_at from contests where id=1")
     row = cur.fetchone(); cur.close(); conn.close()
     if not row:
@@ -508,7 +500,7 @@ def admin_start_voting_5days():
     if not _require_admin():
         return "Forbidden", 403
 
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select status from contests where id=1")
     row = cur.fetchone()
     if not row or row["status"] != "submission":
@@ -536,19 +528,18 @@ def admin_start_voting_5days():
 def admin_close():
     if not _require_admin():
         return "Forbidden", 403
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("update contests set status='closed' where id=1")
     conn.commit(); cur.close(); conn.close()
     flash("투표가 강제로 종료되었습니다.", "ok")
     return redirect(url_for("index"))
-
 
 # ============================================================================
 # 결과 화면
 # ============================================================================
 @app.get("/results")
 def results():
-    conn = db(); cur = conn.cursor()
+    conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select * from contests where id=%s", (1,))
     contest = cur.fetchone()
 
@@ -557,6 +548,7 @@ def results():
         flash("아직 결과를 볼 수 없습니다.", "error")
         return redirect(url_for("index"))
 
+    # 전체 순위
     cur.execute(
         """
         with vc as (
@@ -570,13 +562,15 @@ def results():
           left join vc on vc.outfit_id = o.id
          where o.contest_id=1
          order by votes desc, o.created_at asc
-         limit 3
         """
     )
-    top3 = cur.fetchall()
-    cur.close(); conn.close()
-    return render_template("results.html", contest=contest, top3=top3)
+    ranking = cur.fetchall()
 
+    # Top3 (템플릿에서 쓸 수도 있으므로 함께 제공)
+    top3 = ranking[:3] if ranking else []
+
+    cur.close(); conn.close()
+    return render_template("results.html", contest=contest, ranking=ranking, top3=top3)
 
 # ============================================================================
 # 앱 시작 시 스키마 보장 (Flask 3: before_first_request 제거 대체)
