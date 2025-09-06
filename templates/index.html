@@ -17,7 +17,7 @@
   <main class="relative max-w-6xl mx-auto px-4 py-8">
     <!-- 헤더 -->
     <header class="flex items-center justify-between gap-3 mb-6">
-      <h1 class="halo text-3xl md:text-4xl font-semibold tracking-wide"
+      <h1 class="halo title-gold text-3xl md:text-4xl font-semibold tracking-wide"
           style="font-family:'Playfair Display','Marcellus',serif;">
         {{ contest['title'] }}
       </h1>
@@ -33,7 +33,7 @@
         {% set badge = 'bg-rose-100/80 text-rose-800 ring-1 ring-rose-200' %}
         {% set label = 'Closed' %}
       {% endif %}
-      <span class="pill {{ badge }}">{{ label }}</span>
+      <span class="pill soft {{ badge }}">{{ label }}</span>
     </header>
 
     <!-- 투표 기간 안내 -->
@@ -59,12 +59,12 @@
 
     <!-- 제출 영역 -->
     {% if s == 'submission' %}
-      <section class="card-angel p-4 md:p-6 mb-6">
+      <section class="card-angel lace p-4 md:p-6 mb-6">
         <h2 class="section-title mb-3">코디 제출</h2>
         <form class="grid md:grid-cols-2 gap-4" action="{{ url_for('submit') }}" method="post" enctype="multipart/form-data">
           <div>
-            <label class="block mb-2 text-sm">제목</label>
-            <input name="title" class="input angel-input" placeholder="예: Angel Heart #1" />
+            <label class="block mb-2 text-sm">닉네임/미니코드</label>
+            <input name="title" class="input angel-input" placeholder="예: 은연/incag" />
           </div>
           <div>
             <label class="block mb-2 text-sm">이미지 URL (선택)</label>
@@ -103,9 +103,14 @@
       {% else %}
         <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4 results-stagger">
           {% for it in outfits %}
-            <article class="card-angel overflow-hidden">
+            <article class="card-angel lace overflow-hidden">
               <div class="relative">
-                <img src="{{ it['image_url'] }}" alt="{{ it['title'] or 'Outfit' }}" class="w-full h-56 object-cover" />
+                <img
+                  src="{{ it['image_url'] }}"
+                  alt="{{ it['title'] or 'Outfit' }}"
+                  class="w-full h-56 object-cover cursor-zoom-in"
+                  onclick="openLightbox('{{ it['image_url']|e }}')"
+                  onerror="this.onerror=null;this.src='/static/img/placeholder.jpg'">
                 <div class="rank-badge">{{ counts.get(it['id'], 0) }}</div>
               </div>
               <div class="p-4 space-y-2">
@@ -115,7 +120,7 @@
                 {% if s == 'voting' %}
                   <form action="{{ url_for('vote', oid=it['id']) }}" method="post">
                     {% if votes_left > 0 %}
-                      <button class="btn-vote w-full" type="submit">투표하기</button>
+                      <button class="btn-vote w-full pulse" type="submit">투표하기</button>
                     {% else %}
                       <button class="btn-ghost w-full" type="button" disabled>오늘 투표 횟수 소진</button>
                     {% endif %}
@@ -170,5 +175,22 @@
     </section>
     {% endif %}
   </main>
+
+  <!-- Lightbox -->
+  <div id="lb" class="lightbox-backdrop" onclick="closeLightbox()">
+    <img id="lb-img" class="lightbox-img" src="" alt="">
+  </div>
+  <script>
+    function openLightbox(src){
+      const lb = document.getElementById('lb');
+      const img = document.getElementById('lb-img');
+      img.src = src;
+      lb.classList.add('show');
+    }
+    function closeLightbox(){
+      document.getElementById('lb').classList.remove('show');
+    }
+  </script>
 </body>
 </html>
+

@@ -13,9 +13,11 @@
 
   <main class="relative max-w-6xl mx-auto px-4 py-8">
     <header class="flex items-center justify-between gap-3 mb-6">
-      <h1 class="halo text-3xl md:text-4xl font-semibold"
-          style="font-family:'Playfair Display','Marcellus',serif;">Results · {{ contest['title'] }}</h1>
-      <a class="btn-angel" href="{{ url_for('index') }}">메인으로</a>
+      <h1 class="halo title-gold text-3xl md:text-4xl font-semibold"
+          style="font-family:'Playfair Display','Marcellus',serif;">
+        Results · {{ contest['title'] }}
+      </h1>
+      <a class="btn-angel btn-shadow" href="{{ url_for('index') }}">메인으로</a>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -37,10 +39,16 @@
       <section class="grid md:grid-cols-3 gap-4 mb-8 results-stagger">
         {% set top3 = top3 or ranking[:3] %}
         {% for item in top3 %}
-          <article class="card-angel">
+          <article class="card-angel lace">
             <div class="relative">
-              <img src="{{ item['image_url'] }}" alt="{{ item['title'] or 'Outfit' }}" class="w-full h-56 object-cover" />
+              <img src="{{ item['image_url'] }}"
+                   alt="{{ item['title'] or 'Outfit' }}"
+                   class="w-full h-56 object-cover"
+                   onerror="this.onerror=null;this.src='/static/img/placeholder.jpg'">
               <div class="rank-badge rank-{{ loop.index }}">{{ loop.index }}</div>
+              <div class="ribbon {% if loop.index==2 %}silver{% elif loop.index==3 %}bronze{% endif %}">
+                Top {{ loop.index }}
+              </div>
             </div>
             <div class="p-4">
               <h3 class="font-semibold">{{ item['title'] or 'Untitled Outfit' }}</h3>
@@ -56,8 +64,11 @@
         <h2 class="section-title mb-3">전체 순위</h2>
         <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
           {% for item in ranking %}
-            <article class="card-angel p-4">
-              <img src="{{ item['image_url'] }}" alt="" class="w-full h-48 object-cover rounded-lg mb-3" />
+            <article class="card-angel lace p-4">
+              <img src="{{ item['image_url'] }}"
+                   alt=""
+                   class="w-full h-48 object-cover rounded-lg mb-3"
+                   onerror="this.onerror=null;this.src='/static/img/placeholder.jpg'">
               <h3 class="font-semibold">{{ item['title'] or 'Untitled Outfit' }}</h3>
               <p class="text-xs text-stone-500 break-all">by {{ item['creator_id'] or 'anonymous' }}</p>
               <div class="mt-1 text-sm">표 {{ item['votes'] or 0 }}</div>
@@ -79,9 +90,24 @@
     {% endif %}
 
     <div class="mt-6">
-      <a class="btn-angel" href="{{ url_for('index') }}">메인으로 돌아가기</a>
+      <a class="btn-angel btn-shadow" href="{{ url_for('index') }}">메인으로 돌아가기</a>
     </div>
   </main>
+
+  <!-- 은은한 콘페티 -->
+  <script>
+    (function confetti(){
+      const N = 12;
+      for(let i=0;i<N;i++){
+        const s = document.createElement('div');
+        s.className = 'confetti c' + (1 + (i%4));
+        s.style.left = (10 + Math.random()*80) + 'vw';
+        s.style.setProperty('--t', (7 + Math.random()*6) + 's');
+        s.style.animationDelay = (Math.random()*4) + 's';
+        document.body.appendChild(s);
+      }
+    })();
+  </script>
 </body>
 </html>
 

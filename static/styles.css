@@ -10,14 +10,22 @@ body.angel-bg{
   color:#3a3530; /* 기본 텍스트 톤(진회색) */
 }
 
+/* ---------------- Base Cards / Utilities ---------------- */
+
 /* 카드: 글래스 효과 */
 .card-angel{
-  background: rgba(255,255,255,0.78);
+  background: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.72));
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  border:1px solid rgba(205,196,186,.65);
-  box-shadow:0 10px 28px rgba(90,74,59,.08);
-  border-radius:1rem;
+  border:1px solid rgba(255,255,255,.7);
+  box-shadow:0 12px 28px rgba(149,132,159,.18);
+  border-radius:1.25rem;
+  overflow: hidden;
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.card-angel:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(149,132,159,.25);
 }
 
 /* 얇은 구분선 */
@@ -37,43 +45,7 @@ body.angel-bg{
 /* 배지(알약) */
 .pill{ padding:.25rem .8rem; border-radius:9999px; font-size:.75rem; font-weight:700; }
 
-/* 연베이지 버튼 */
-.btn-beige{ background:#e9dfd3; color:#3a3530; }
-.btn-beige:hover{ background:#ddd2c5; }
-
-/* 아웃라인(연베이지 라인) */
-.btn-outline{ border:1px solid #d8ccc0; color:#3a3530; }
-.btn-outline:hover{ background:#faf7f4; }
-
-/* 삭제(관리자) – 연한 로즈 */
-.btn-danger{ background:#e77b7b; color:#fff; }
-.btn-danger:hover{ background:#d86d6d; }
-
 .btn-shadow{ box-shadow:0 6px 14px rgba(90,74,59,.12); }
-
-/* 슬로우 샤인: 텍스트만 천천히 빛 스침 */
-.shine-text{
-  position: relative;
-  z-index: 2;
-  background: linear-gradient(
-    90deg,
-    #3a3530 0%,
-    #9b8d81 18%,
-    #3a3530 36%,
-    #3a3530 100%
-  );
-  background-size: 260% 100%;  /* 넓게 잡아 더 부드럽게 */
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shine-move 11s ease-in-out infinite;
-}
-
-@keyframes shine-move{
-  0%   { background-position: 260% 0; }
-  50%  { background-position:   80% 0; }
-  100% { background-position:    0% 0; }
-}
 
 /* — 공통 톤 — */
 :root{
@@ -91,26 +63,12 @@ body.angel-bg{
     0 8px 30px rgba(234,184,192,.35);
 }
 
-/* 반투명 글래스 카드 */
+/* 반투명 글래스 유틸 */
 .glass{
   backdrop-filter: blur(6px);
   background: rgba(255,255,255,.65);
   border: 1px solid rgba(255,255,255,.6);
   box-shadow: 0 10px 25px rgba(149, 132, 159, .15);
-}
-
-/* 갤러리 카드 */
-.card-angel{
-  background: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.72));
-  border: 1px solid rgba(255,255,255,.7);
-  box-shadow: 0 12px 28px rgba(149,132,159,.18);
-  border-radius: 1.25rem;
-  overflow: hidden;
-  transition: transform .25s ease, box-shadow .25s ease;
-}
-.card-angel:hover{
-  transform: translateY(-2px);
-  box-shadow: 0 16px 36px rgba(149,132,159,.25);
 }
 
 /* 입력 & 파일 인풋 */
@@ -179,16 +137,20 @@ body.angel-bg{
   border-radius: .9rem;
   color: #7a6652;
 }
-
+/* Tailwind CDN 환경에서는 @apply가 동작하지 않을 수 있음 — 필요 시 .glass 규칙으로 대체 */
 .alert-error{
-  @apply glass;
   border-left: 4px solid #ef4444;
   padding:.9rem 1rem; border-radius: .9rem;
+  backdrop-filter: blur(6px);
+  background: rgba(255,255,255,.65);
+  border: 1px solid rgba(255,255,255,.6);
 }
 .alert-info{
-  @apply glass;
   border-left: 4px solid #60a5fa;
   padding:.9rem 1rem; border-radius: .9rem;
+  backdrop-filter: blur(6px);
+  background: rgba(255,255,255,.65);
+  border: 1px solid rgba(255,255,255,.6);
 }
 
 /* 관리자 X 버튼 */
@@ -229,16 +191,7 @@ body.angel-bg{
 .rank-2{ background: linear-gradient(180deg,#f7f9ff,#e6edff); color:#435179; border-color:#c9d6ff; }
 .rank-3{ background: linear-gradient(180deg,#fff7f2,#ffe3d3); color:#8a5332; border-color:#f3c6a8; }
 
-/* 결과 카드 */
-.card-angel {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255,255,255,0.6);
-  border-radius: 1.25rem;
-  box-shadow: 0 12px 28px rgba(149,132,159,.15);
-  overflow: hidden;
-  transition: transform .25s ease, box-shadow .25s ease;
-}
+/* 결과 카드 hover(중복 보호) */
 .card-angel:hover{
   transform: translateY(-2px);
   box-shadow: 0 16px 36px rgba(149,132,159,.3);
@@ -272,4 +225,114 @@ body.angel-bg{
     transform: none !important;
   }
 }
+
+/* ---------------- Aesthetic Upgrades (Vintage Floral) ---------------- */
+
+/* 1) 타이틀/배지 골드 톤 */
+.title-gold {
+  letter-spacing:.4px;
+  text-shadow: 0 1px 0 rgba(255,255,255,.8), 0 10px 32px rgba(212,175,55,.15);
+}
+.pill.soft {
+  background: linear-gradient(180deg,#fff,#faf5ef);
+  border:1px solid rgba(222,209,196,.8);
+  box-shadow: 0 6px 14px rgba(149,132,159,.12);
+}
+
+/* 2) Lace Border Card */
+.card-angel.lace {
+  position: relative;
+  border: 1px solid rgba(230, 220, 210, .85);
+  background:
+    radial-gradient(1200px 600px at 50% -80%, rgba(255,255,255,.65), transparent 60%),
+    rgba(255,255,255,.78);
+  box-shadow: 0 18px 40px rgba(90,74,59,.12);
+}
+.card-angel.lace::before {
+  content:"";
+  position:absolute; inset:0; pointer-events:none;
+  border-radius: 1.25rem;
+  /* 레이스 느낌의 반복 패턴 (가벼운 SVG data-URI) */
+  background-image: url("data:image/svg+xml;utf8,\
+  <svg xmlns='http://www.w3.org/2000/svg' width='44' height='22' viewBox='0 0 44 22'>\
+    <path fill='none' stroke='rgba(226,213,202,.6)' d='M0,11 q11,-11 22,0 t22,0'/>\
+  </svg>");
+  background-repeat: repeat;
+  opacity:.45;
+  mask: linear-gradient(#000, transparent 85%);
+  -webkit-mask: linear-gradient(#000, transparent 85%);
+  border: 1px solid rgba(255,255,255,.75);
+}
+
+/* 3) Vote Button Soft Pulse (투표 기간에만 클래스 .pulse 추가해서 사용) */
+@keyframes softPulse {
+  0%,100%{ transform: translateY(0) scale(1); box-shadow: 0 6px 16px rgba(234,184,192,.25); }
+  50%{ transform: translateY(-2px) scale(1.015); box-shadow: 0 10px 24px rgba(234,184,192,.32); }
+}
+.btn-vote.pulse { animation: softPulse 2.8s ease-in-out infinite; }
+
+/* 4) Lightbox (이미지 확대) */
+.lightbox-backdrop{
+  position:fixed; inset:0; background:rgba(255,255,255,.75);
+  backdrop-filter: blur(6px); display:none; z-index:50;
+}
+.lightbox-backdrop.show{ display:flex; align-items:center; justify-content:center; }
+.lightbox-img{
+  max-width:min(92vw,1100px); max-height:85vh; border-radius:1rem;
+  box-shadow:0 24px 60px rgba(47,42,37,.3);
+  border:1px solid rgba(255,255,255,.8);
+}
+
+/* 5) Results: Top3 Ribbons */
+.ribbon {
+  position:absolute; top:14px; right:-6px;
+  background: linear-gradient(180deg,#fff6cf,#ffd772);
+  color:#6a541e; font-weight:700; font-size:.8rem;
+  padding:.35rem .8rem; border-radius:.4rem;
+  box-shadow:0 10px 20px rgba(212,175,55,.25);
+  transform: rotate(6deg);
+}
+.ribbon.silver { background:linear-gradient(180deg,#f1f4ff,#dfe8ff); color:#435179; }
+.ribbon.bronze { background:linear-gradient(180deg,#ffe7cf,#f3c6a8); color:#8a5332; }
+
+/* 6) Results: Watercolor Confetti (은은) */
+@keyframes confettiFloat {
+  0%   { transform: translateY(10px) translateX(0) rotate(0); opacity:0; }
+  20%  { opacity:.9; }
+  100% { transform: translateY(-140vh) translateX(30px) rotate(60deg); opacity:0; }
+}
+.confetti {
+  position: fixed; left: 50%; bottom: -20vh; width:8px; height:8px;
+  background: currentColor; border-radius: 50%;
+  opacity: .85; filter: blur(.2px);
+  animation: confettiFloat var(--t,8s) linear infinite;
+  z-index: 5;
+}
+.confetti.c1{ color:#f3c6a8; }
+.confetti.c2{ color:#eab8c0; }
+.confetti.c3{ color:#c5d7f2; }
+.confetti.c4{ color:#e7e3da; }
+
+/* 7) Slow Shine Text (사용 시 클래스 .shine-text) */
+.shine-text{
+  position: relative;
+  z-index: 2;
+  background: linear-gradient(90deg,#3a3530 0%,#9b8d81 18%,#3a3530 36%,#3a3530 100%);
+  background-size: 260% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shine-move 11s ease-in-out infinite;
+}
+@keyframes shine-move{
+  0%   { background-position: 260% 0; }
+  50%  { background-position:   80% 0; }
+  100% { background-position:    0% 0; }
+}
+
+/* 8) 버튼 컬러 보조 */
+.btn-beige{ background:#e9dfd3; color:#3a3530; }
+.btn-beige:hover{ background:#ddd2c5; }
+.btn-outline{ border:1px solid #d8ccc0; color:#3a3530; }
+.btn-outline:hover{ background:#faf7f4; }
+.btn-danger{ background:#e77b7b; color:#fff; }
+.btn-danger:hover{ background:#d86d6d; }
 
