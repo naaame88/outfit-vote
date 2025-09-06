@@ -63,8 +63,8 @@
         <h2 class="section-title mb-3">코디 제출</h2>
         <form class="grid md:grid-cols-2 gap-4" action="{{ url_for('submit') }}" method="post" enctype="multipart/form-data">
           <div>
-            <label class="block mb-2 text-sm">닉네임/미니코드</label>
-            <input name="title" class="input angel-input" placeholder="ex)은연/incag" />
+            <label class="block mb-2 text-sm">제목</label>
+            <input name="title" class="input angel-input" placeholder="예: Angel Heart #1" />
           </div>
           <div>
             <label class="block mb-2 text-sm">이미지 URL (선택)</label>
@@ -137,7 +137,14 @@
       {% endif %}
     </section>
 
-    <!-- 관리자 섹션: 관리자일 때만 노출 -->
+    <!-- 결과 발표 버튼: 종료 상태일 때만 노출 -->
+    {% if contest['status'] == 'closed' %}
+      <div class="mt-6 text-center">
+        <a class="btn-angel btn-shadow" href="{{ url_for('results') }}">결과 발표</a>
+      </div>
+    {% endif %}
+
+    <!-- 관리자 섹션: 관리자일 때만 -->
     {% if show_admin %}
     <section class="mt-8">
       <h2 class="section-title mb-3">관리자</h2>
@@ -165,7 +172,3 @@
   </main>
 </body>
 </html>
-
-
-
-
