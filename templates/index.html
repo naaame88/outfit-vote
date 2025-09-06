@@ -8,56 +8,60 @@
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- 클래식 무드 폰트 -->
+  <!-- 서체(클래식 무드) -->
   <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Playfair+Display:wght@500;700&display=swap" rel="stylesheet">
 
-  <!-- 커스텀 CSS -->
+  <!-- 커스텀 CSS (배경 .angel-bg 유지) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
 </head>
 <body class="angel-bg min-h-screen text-stone-700">
-  <!-- 은은한 화이트 베일 오버레이 -->
+  <!-- 가독성 베일 -->
   <div class="fixed inset-0 pointer-events-none bg-white/55"></div>
 
   <main class="relative max-w-6xl mx-auto px-4 py-8">
     <!-- 헤더 -->
-    <header class="flex flex-col items-center gap-3 mb-8 text-center">
-      <h1 class="halo font-semibold tracking-wide" style="font-family:'Playfair Display','Marcellus',serif;">
-        <span class="text-4xl sm:text-5xl md:text-6xl">{{ contest['title'] }}</span>
-      </h1>
-
-      <!-- 상태 배지 -->
-      {% set s = contest['status'] %}
-      {% if s == 'submission' %}
-        {% set badge = 'bg-amber-100/80 text-amber-800 ring-1 ring-amber-200' %}
-        {% set label = 'Submission' %}
-      {% elif s == 'voting' %}
-        {% set badge = 'bg-emerald-100/80 text-emerald-800 ring-1 ring-emerald-200' %}
-        {% set label = 'Voting' %}
-      {% else %}
-        {% set badge = 'bg-rose-100/80 text-rose-800 ring-1 ring-rose-200' %}
-        {% set label = 'Closed' %}
-      {% endif %}
-      <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm {{ badge }}">
-        <span class="i-angel"></span>{{ label }}
-      </span>
-
-      <p class="text-sm text-stone-600">
-        남은 표: <span class="font-semibold">{{ votes_left }}</span> / {{ contest['votes_per_user'] }}
-      </p>
-
-      <!-- 관리자: 투표 종료 버튼(투표 중일 때만) / 결과 보기(종료 후) -->
-      {% if show_admin %}
-        <div class="mt-2 flex items-center gap-3">
-          {% if contest['status'] == 'voting' %}
-            <form method="post" action="{{ url_for('admin_close') }}" onsubmit="return confirm('정말 투표를 종료할까요?');">
-              <button type="submit" class="btn-danger btn-shadow px-3 py-2 rounded-lg">✦ 투표 종료</button>
-            </form>
-          {% endif %}
-          {% if contest['status'] == 'closed' %}
-            <a href="{{ url_for('results') }}" class="btn-angel px-3 py-2 rounded-lg">결과 보기</a>
-          {% endif %}
+    <header class="flex items-start justify-between gap-4 mb-6">
+      <div>
+        <h1 class="halo text-4xl lg:text-6xl font-semibold tracking-wide"
+            style="font-family:'Playfair Display','Marcellus',serif;">
+          {{ contest['title'] }}
+        </h1>
+        {% set s = contest['status'] %}
+        {% if s == 'submission' %}
+          {% set badge = 'bg-amber-100/80 text-amber-800 ring-1 ring-amber-200' %}
+          {% set label = 'Submission' %}
+        {% elif s == 'voting' %}
+          {% set badge = 'bg-emerald-100/80 text-emerald-800 ring-1 ring-emerald-200' %}
+          {% set label = 'Voting' %}
+        {% else %}
+          {% set badge = 'bg-rose-100/80 text-rose-800 ring-1 ring-rose-200' %}
+          {% set label = 'Closed' %}
+        {% endif %}
+        <div class="inline-flex items-center mt-2 px-3 py-1 rounded-full text-sm {{ badge }}">
+          {{ label }}
         </div>
-      {% endif %}
+      </div>
+
+      <!-- 상태 우측 블록 -->
+      <div class="text-right">
+        {% if s == 'voting' and voting_start_at and voting_end_at %}
+          <p class="text-sm text-stone-600">투표 기간</p>
+          <p class="text-base font-medium">
+            {{ voting_start_at.strftime('%Y-%m-%d %H:%M') }} ~ {{ voting_end_at.strftime('%Y-%m-%d %H:%M') }} (KST)
+          </p>
+        {% endif %}
+        {% if s == 'voting' %}
+          <p class="mt-2 text-sm">
+            남은 표: <span class="font-semibold">{{ remaining_today }}</span> / <span class="opacity-75">2 (하루)</span>
+          </p>
+        {% endif %}
+        {% if s == 'results' %}
+          <a href="{{ url_for('results') }}"
+             class="inline-flex items-center mt-3 px-4 py-2 rounded-xl bg-stone-900 text-white hover:bg-black transition">
+            결과 보기
+          </a>
+        {% endif %}
+      </div>
     </header>
 
     <!-- 플래시 메시지 -->
@@ -65,89 +69,133 @@
       {% if messages %}
         <div class="space-y-2 mb-6">
           {% for category, msg in messages %}
-            {% set tone = 'info' %}
-            {% if category == 'ok' %}{% set tone = 'ok' %}{% endif %}
-            {% if category == 'error' %}{% set tone = 'error' %}{% endif %}
-            <div class="alert-{{ tone }}">{{ msg }}</div>
+            {% set tone = 'bg-stone-900 text-white' %}
+            {% if category in ['ok','success'] %}{% set tone = 'bg-emerald-600 text-white' %}{% endif %}
+            {% if category in ['error','warning'] %}{% set tone = 'bg-rose-600 text-white' %}{% endif %}
+            <div class="px-4 py-3 rounded-xl {{ tone }}">{{ msg }}</div>
           {% endfor %}
         </div>
       {% endif %}
     {% endwith %}
 
-    <!-- 제출 폼 (제출 단계 & 아직 미제출일 때만) -->
-    {% if contest['status'] == 'submission' and not i_submitted %}
-      <section class="glass p-5 rounded-2xl shadow-xl mb-8">
-        <h2 class="section-title mb-4">코디 제출</h2>
-        <form method="post" action="{{ url_for('submit') }}" enctype="multipart/form-data" class="space-y-3">
-          <input type="text" name="title" placeholder="닉네임/미니코드를 입력하세요. ex)은연 incag" class="input angel-input" />
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input type="text" name="image_url" placeholder="이미지 URL (파일 업로드가 어려우면 URL 사용)" class="input angel-input" />
-            <input type="file" name="image_file" accept="image/*" class="file-input angel-input" />
-          </div>
-          <button type="submit" class="btn-angel">제출하기</button>
+    <!-- 제출 섹션 -->
+    {% if s == 'submission' %}
+      <section class="mb-10">
+        <h2 class="text-2xl font-semibold mb-4">코디 제출</h2>
+        <form method="post" action="{{ url_for('submit') }}"
+              class="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white/70 backdrop-blur p-4 rounded-2xl shadow">
+          <input type="text" name="title" placeholder="제목(선택)"
+                 class="px-3 py-2 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-stone-400" />
+          <input type="text" name="author" placeholder="이름/닉네임(선택)"
+                 class="px-3 py-2 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-stone-400" />
+          <input type="url" name="image_url" placeholder="이미지 URL(필수)"
+                 class="px-3 py-2 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-stone-400 md:col-span-2" required />
+          <button class="px-4 py-2 rounded-xl bg-stone-900 text-white hover:bg-black transition">
+            제출하기
+          </button>
         </form>
+
+        <!-- (선택) 관리자: 5일 투표 시작 버튼 -->
+        {% if session.get('is_admin') %}
+          <form method="post" action="{{ url_for('admin_start_voting_5days') }}"
+                class="mt-4"
+                onsubmit="return confirm('지금부터 5일간 투표를 시작할까요?');">
+            <button class="px-4 py-2 rounded-xl bg-emerald-700 text-white hover:bg-emerald-800 transition">
+              투표 시작 (5일간)
+            </button>
+          </form>
+        {% endif %}
       </section>
     {% endif %}
 
     <!-- 갤러리 -->
-    {% if show_gallery %}
-      <section>
-        <h2 class="section-title mb-4">Gallery</h2>
-
-        {% if outfits|length == 0 %}
-          <div class="glass p-6 rounded-2xl text-center text-stone-500">아직 제출된 코디가 없습니다.</div>
-        {% else %}
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {% for o in outfits %}
-              <article class="card-angel group relative">
-                <!-- 관리자 X 버튼 -->
-                {% if show_admin %}
-                  <form method="post" action="{{ url_for('admin_delete', oid=o['id']) }}" class="absolute z-10 right-3 top-3">
-                    <button type="submit" class="admin-x" title="삭제">×</button>
-                  </form>
-                {% endif %}
-
-                <div class="overflow-hidden rounded-t-2xl">
-                  <img src="{{ o['image_url'] }}" alt="{{ o['title'] or 'Outfit' }}"
-                       class="w-full h-64 object-cover group-hover:scale-[1.03] transition-transform duration-500" />
-                </div>
-                <div class="p-4 text-center">
-                  <h3 class="font-semibold text-lg mb-1">{{ o['title'] or 'Untitled Outfit' }}</h3>
-                  <p class="text-stone-600 text-sm mb-3">
-                    <span class="inline-flex items-center gap-1">
-                      <span class="i-heart"></span>
-                      표 <strong>{{ counts.get(o['id'], 0) }}</strong>
-                    </span>
-                  </p>
-
-                  {% if contest['status'] == 'voting' %}
-                    <form method="post" action="{{ url_for('vote', oid=o['id']) }}">
-                      <button type="submit" class="btn-vote">투표하기</button>
-                    </form>
-                  {% else %}
-                    <div class="text-xs text-stone-500 italic">지금은 투표 기간이 아닙니다</div>
-                  {% endif %}
-                </div>
-              </article>
-            {% endfor %}
-          </div>
+    <section>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-2xl font-semibold">Gallery</h2>
+        {% if s == 'voting' %}
+          <p class="text-sm text-stone-600">이미지를 클릭하면 크게 볼 수 있어요.</p>
         {% endif %}
-      </section>
-    {% else %}
-      <section class="glass p-6 rounded-2xl text-center text-stone-600">
-        제출을 완료하면 갤러리를 볼 수 있습니다.
-      </section>
-    {% endif %}
+      </div>
 
-    <!-- 관리자: 전체 삭제 -->
-    {% if show_admin %}
-      <section class="mt-8 text-center">
-        <form method="post" action="{{ url_for('admin_delete_all') }}">
-          <button type="submit" class="btn-angel btn-outline">[관리자] 모든 코디 삭제</button>
-        </form>
-      </section>
-    {% endif %}
+      {% if entries|length == 0 %}
+        <div class="p-6 rounded-2xl bg-white/70 backdrop-blur shadow">아직 제출된 코디가 없습니다.</div>
+      {% else %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {% for item in entries %}
+            <article class="group relative rounded-2xl overflow-hidden shadow hover:shadow-xl bg-white/70 backdrop-blur">
+              <button type="button"
+                      class="block w-full"
+                      onclick="openImageModal('{{ item['image_url']|e }}', `{{ (item['title'] or 'Untitled')|e }}`)">
+                <img src="{{ item['image_url'] }}" alt="{{ item['title'] or 'entry' }}"
+                     class="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105" />
+              </button>
+
+              <div class="p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 class="text-lg font-semibold">{{ item['title'] or 'Untitled' }}</h3>
+                    <p class="text-sm text-stone-600">{{ item['author'] or '' }}</p>
+                  </div>
+                  <div class="px-2 py-1 rounded-lg bg-stone-100 text-stone-700 text-sm">
+                    표 {{ item['votes'] or 0 }}
+                  </div>
+                </div>
+
+                <!-- 투표 버튼 -->
+                {% if s == 'voting' %}
+                  <form method="post" action="{{ url_for('vote', entry_id=item['id']) }}" class="mt-3">
+                    <button class="w-full px-4 py-2 rounded-xl bg-stone-900 text-white hover:bg-black transition"
+                            {% if remaining_today <= 0 %}disabled class="opacity-50 cursor-not-allowed"{% endif %}>
+                      {% if remaining_today > 0 %}투표하기{% else %}오늘 투표 횟수 소진{% endif %}
+                    </button>
+                  </form>
+                {% else %}
+                  <p class="mt-3 text-sm text-stone-500">
+                    지금은 투표 기간이 아닙니다
+                  </p>
+                {% endif %}
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
   </main>
+
+  <!-- ==== 이미지 모달 ==== -->
+  <div id="imageModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
+    <!-- 뒷배경 -->
+    <div class="absolute inset-0 bg-black/60" onclick="closeImageModal()"></div>
+    <!-- 콘텐츠 -->
+    <div class="relative max-w-5xl w-[92vw] bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <button class="absolute top-3 right-3 rounded-full p-2 bg-black/60 text-white hover:bg-black transition"
+              onclick="closeImageModal()" aria-label="닫기">✕</button>
+      <div class="w-full">
+        <img id="modalImg" src="" alt="" class="w-full max-h-[80vh] object-contain bg-black"/>
+      </div>
+      <div class="p-4">
+        <h2 id="modalTitle" class="text-lg font-semibold"></h2>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openImageModal(src, title) {
+      const m = document.getElementById('imageModal');
+      document.getElementById('modalImg').src = src;
+      document.getElementById('modalTitle').textContent = title || '';
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeImageModal() {
+      const m = document.getElementById('imageModal');
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+      document.body.style.overflow = '';
+      document.getElementById('modalImg').src = '';
+    }
+  </script>
 </body>
 </html>
 

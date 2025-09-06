@@ -1,430 +1,378 @@
-import os, uuid, datetime
-from mimetypes import guess_type
-from flask import Flask, render_template, request, redirect, url_for, make_response, flash, session
-from werkzeug.exceptions import RequestEntityTooLarge
+import os
+import sqlite3
+from functools import wraps
+from datetime import datetime, timedelta
+from flask import (
+    Flask, render_template, request, redirect, url_for,
+    make_response, flash, session
+)
+from zoneinfo import ZoneInfo
 
-# --- Postgres driver ---
-import psycopg2
-from psycopg2 import extras, errors
-
+# ──────────────────────────────────────────────────────────────────────────────
+# Flask 기본 설정
+# ──────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "dev-secret")
-app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024  # 업로드 8MB 제한
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret")
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8MB (이미지 직접 업로드 안 씀)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+DB_PATH = os.path.join(BASE_DIR, "app.db")
 
-ADMIN_KEY = os.environ.get("ADMIN_KEY", "changeme")  # 배포 시 환경변수로 교체
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "dev-admin")
+TZ = ZoneInfo("Asia/Seoul")  # 하루 2표 제한 및 투표 종료 판정은 KST 기준
 
-# =========================
-# DB 유틸 (Supabase Postgres)
-# =========================
-DATABASE_URL = os.environ.get("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL env var is required (Supabase Postgres connection string)")
-
-def db():
-    # 매 요청마다 새 연결을 만드는 간단한 방식 (커넥션 풀은 필요시 적용)
-    return psycopg2.connect(DATABASE_URL, cursor_factory=extras.RealDictCursor)
-
+# ──────────────────────────────────────────────────────────────────────────────
+# DB 유틸
+# ──────────────────────────────────────────────────────────────────────────────
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
-    conn = db(); cur = conn.cursor()
-    # 스키마 생성 (id는 bigserial, 시간은 timestamptz)
+    conn = get_db()
+    cur = conn.cursor()
+
+    # 콘테스트 기본 메타 및 상태
     cur.execute(
         """
-        create table if not exists contests(
-          id bigserial primary key,
-          title text not null default 'Angel Heart',
-          status text not null default 'submission', -- submission | voting | closed
-          created_at timestamptz not null default now(),
-          voting_opened_at timestamptz,
-          voting_ends_at timestamptz,
-          max_entries integer not null default 10,   -- 총 수용 인원(기본 10명)
-          votes_per_user integer not null default 2  -- 1인 2표
-        );
-
-        create table if not exists outfits(
-          id bigserial primary key,
-          contest_id bigint not null references contests(id) on delete cascade,
-          title text,
-          image_url text,
-          creator_id text,
-          created_at timestamptz not null default now()
-        );
-
-        create table if not exists votes(
-          id bigserial primary key,
-          contest_id bigint not null references contests(id) on delete cascade,
-          outfit_id bigint not null references outfits(id) on delete cascade,
-          voter_id text,
-          created_at timestamptz not null default now()
+        CREATE TABLE IF NOT EXISTS contest (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            title TEXT DEFAULT 'Angel heart · Outfit Contest',
+            status TEXT DEFAULT 'submission',          -- submission | voting | results
+            voting_start_at TEXT,                      -- ISO datetime (KST)
+            voting_end_at TEXT                         -- ISO datetime (KST)
         );
         """
     )
-    # 유니크 인덱스 (있으면 생략)
+
+    # 참가작
     cur.execute(
         """
-        do $$ begin
-          if not exists (select 1 from pg_indexes where indexname='uniq_vote_per_outfit_per_voter') then
-            create unique index uniq_vote_per_outfit_per_voter on votes(contest_id, outfit_id, voter_id);
-          end if;
-          if not exists (select 1 from pg_indexes where indexname='uniq_submission_per_creator') then
-            create unique index uniq_submission_per_creator on outfits(contest_id, creator_id);
-          end if;
-        end $$;
+        CREATE TABLE IF NOT EXISTS entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            author TEXT,
+            image_url TEXT NOT NULL,
+            votes INTEGER DEFAULT 0,
+            created_at TEXT
+        );
         """
     )
-    # contests 기본 레코드 보장 (id=1)
-    cur.execute("select count(*) as c from contests where id=1")
+
+    # 투표 로그 (집계는 entries.votes로 하지만, 감사 용도/추적용)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS votes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_id INTEGER NOT NULL,
+            ip TEXT,
+            created_at TEXT,
+            FOREIGN KEY(entry_id) REFERENCES entries(id)
+        );
+        """
+    )
+
+    # contest 싱글톤 보장
+    cur.execute("SELECT COUNT(*) AS c FROM contest WHERE id = 1;")
     if cur.fetchone()["c"] == 0:
-        cur.execute("insert into contests(id, title) values (1, 'Angel Heart')")
-    conn.commit(); cur.close(); conn.close()
+        cur.execute("INSERT INTO contest (id) VALUES (1);")
 
-# =========================
-# 쿠키/보안 유틸
-# =========================
+    conn.commit()
+    conn.close()
 
-def ensure_voter_cookie(resp, voter_id):
-    """응답에 voter_id 쿠키를 보장(없으면 생성)"""
-    if not voter_id:
-        voter_id = str(uuid.uuid4())
-    resp.set_cookie(
-        "voter_id", voter_id,
-        max_age=60*60*24*365*5,  # 5년
-        httponly=True,
-        samesite="Lax",
-        secure=bool(request.is_secure)
-    )
+@app.before_first_request
+def _on_start():
+    init_db()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시간/상태 유틸
+# ──────────────────────────────────────────────────────────────────────────────
+def now_kst() -> datetime:
+    return datetime.now(TZ)
+
+def load_contest(cur=None):
+    owns_cursor = False
+    conn = None
+    if cur is None:
+        conn = get_db()
+        cur = conn.cursor()
+        owns_cursor = True
+    cur.execute("SELECT * FROM contest WHERE id = 1;")
+    row = cur.fetchone()
+    if owns_cursor:
+        conn.close()
+    return row
+
+def save_contest_status(status: str, start: datetime | None = None, end: datetime | None = None):
+    conn = get_db()
+    cur = conn.cursor()
+    if start is None and end is None:
+        cur.execute("UPDATE contest SET status = ? WHERE id = 1;", (status,))
+    else:
+        start_iso = start.isoformat() if start else None
+        end_iso = end.isoformat() if end else None
+        cur.execute(
+            "UPDATE contest SET status = ?, voting_start_at = ?, voting_end_at = ? WHERE id = 1;",
+            (status, start_iso, end_iso),
+        )
+    conn.commit()
+    conn.close()
+
+def parse_iso(dt_str: str | None) -> datetime | None:
+    if not dt_str:
+        return None
+    return datetime.fromisoformat(dt_str)
+
+def auto_close_voting_if_needed():
+    """요청 때마다 호출해서, 투표 종료 시간이 지났으면 자동으로 results로 전환."""
+    c = load_contest()
+    if c is None:
+        return
+    if c["status"] != "voting":
+        return
+    end_at = parse_iso(c["voting_end_at"])
+    if end_at and now_kst() >= end_at:
+        save_contest_status("results")  # 자동 종료
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 하루 2표 제한 (KST 기준) - 쿠키 기반
+# ──────────────────────────────────────────────────────────────────────────────
+def today_cookie_key(prefix="votes"):
+    today_str = now_kst().strftime("%Y%m%d")  # 예: 20250906
+    return f"{prefix}_{today_str}"
+
+def get_today_vote_count(req) -> int:
+    key = today_cookie_key()
+    raw = req.cookies.get(key)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+def inc_today_vote_count(resp, current_count: int):
+    key = today_cookie_key()
+    new_count = current_count + 1
+    # 자정 지나면 자연히 쿠키 키가 바뀌므로 별도 만료 설정 불필요
+    resp.set_cookie(key, str(new_count), samesite="Lax")
     return resp
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 관리자 보호 데코레이터
+# ──────────────────────────────────────────────────────────────────────────────
+def admin_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if session.get("is_admin") is True:
+            return f(*args, **kwargs)
+        flash("관리자 권한이 필요합니다.", "error")
+        return redirect(url_for("results"))
+    return wrapper
 
-def ensure_voter():
-    """
-    쓰기 라우트 보호: 쿠키 없으면 한 번 리다이렉트하여 쿠키 심은 뒤 재요청 유도.
-    반환: (voter_id, redirect_response or None)
-    """
-    vid = request.cookies.get("voter_id")
-    if not vid:
-        vid = str(uuid.uuid4())
-        resp = redirect(request.url)
-        resp.set_cookie(
-            "voter_id", vid,
-            max_age=60*60*24*365*5,
-            httponly=True,
-            samesite="Lax",
-            secure=bool(request.is_secure)
-        )
-        return vid, resp
-    return vid, None
-
-
-def get_voter_id():
-    return request.cookies.get("voter_id")
-
-
-def file_allowed(filename):
-    return "." in filename and filename.rsplit(".",1)[1].lower() in {"png","jpg","jpeg","gif","webp"}
-
-
-def sniff_is_image(path):
-    mime, _ = guess_type(path)
-    return mime in {"image/png", "image/jpeg", "image/gif", "image/webp"}
-
-# =========================
-# 상태 자동 전환
-# =========================
-
-def phase_auto_close_if_needed():
-    conn = db(); cur = conn.cursor()
-    cur.execute("select status, voting_ends_at from contests where id=%s", (1,))
-    row = cur.fetchone()
-    if row and row["status"] == "voting" and row["voting_ends_at"]:
-        ends_at = row["voting_ends_at"]  # timestamptz (aware)
-        if ends_at <= datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc):
-            cur.execute("update contests set status='closed' where id=1 and status='voting'")
-            conn.commit()
-    cur.close(); conn.close()
-
-# =========================
-# 에러 핸들러
-# =========================
-@app.errorhandler(RequestEntityTooLarge)
-def handle_large_file(e):
-    flash("업로드 용량 제한(8MB)을 초과했습니다.", "error")
-    return redirect(url_for("index"))
-
-# =========================
+# ──────────────────────────────────────────────────────────────────────────────
 # 라우트
-# =========================
-@app.route("/", methods=["GET"])
+# ──────────────────────────────────────────────────────────────────────────────
+@app.get("/")
 def index():
-    phase_auto_close_if_needed()
-    voter_id = get_voter_id() or str(uuid.uuid4())
+    auto_close_voting_if_needed()
 
-    conn = db(); cur = conn.cursor()
-    cur.execute("select * from contests where id=%s", (1,))
-    contest = cur.fetchone()
+    conn = get_db()
+    cur = conn.cursor()
 
-    cur.execute("select * from outfits where contest_id=%s order by created_at asc", (1,))
-    outfits = cur.fetchall()
-    entries_count = len(outfits)
+    c = load_contest(cur)
+    cur.execute("SELECT * FROM entries ORDER BY id DESC;")
+    entries = cur.fetchall()
+    conn.close()
 
-    cur.execute("select count(*) as c from outfits where contest_id=%s and creator_id=%s", (1, voter_id))
-    i_submitted = cur.fetchone()["c"] > 0
+    status = c["status"]
+    start_at = parse_iso(c["voting_start_at"])
+    end_at = parse_iso(c["voting_end_at"])
 
-    cur.execute("select count(*) as c from votes where contest_id=%s and voter_id=%s", (1, voter_id))
-    my_votes = cur.fetchone()["c"]
+    # 템플릿 내부에서 상태 분기: submission / voting / results
+    # (index.html 하나로 상태별 화면을 구성해도 되고, 분리 템플릿을 써도 됨)
+    today_count = get_today_vote_count(request)
+    remaining_today = max(0, 2 - today_count)
 
-    cur.execute(
-        """
-        select o.id, count(v.id) as vote_count
-        from outfits o
-        left join votes v
-          on v.outfit_id = o.id and v.contest_id = o.contest_id
-        where o.contest_id=%s
-        group by o.id
-        """,
-        (1,)
-    )
-    counts = {r["id"]: r["vote_count"] for r in cur.fetchall()}
-    cur.close(); conn.close()
-
-    show_gallery = (contest["status"] != "submission") or i_submitted
-
-    if request.args.get("key") == ADMIN_KEY:
-        session["is_admin"] = True
-    show_admin = bool(session.get("is_admin") is True)
-
-    resp = make_response(render_template(
+    return render_template(
         "index.html",
-        contest=contest,
-        outfits=outfits,
-        entries_count=entries_count,
-        i_submitted=i_submitted,
-        my_votes=my_votes,
-        counts=counts,
-        votes_left=max(0, int(contest["votes_per_user"]) - int(my_votes)),
-        show_gallery=show_gallery,
-        show_admin=show_admin
-    ))
-    return ensure_voter_cookie(resp, voter_id)
+        contest=c,
+        entries=entries,
+        status=status,
+        voting_start_at=start_at,
+        voting_end_at=end_at,
+        remaining_today=remaining_today
+    )
 
 @app.post("/submit")
 def submit():
-    voter_id, redirect_resp = ensure_voter()
-    if redirect_resp:
-        return redirect_resp
+    """제출 단계에서 참가작 등록 (이미지 URL 기반)."""
+    auto_close_voting_if_needed()
 
     title = (request.form.get("title") or "").strip()
+    author = (request.form.get("author") or "").strip()
     image_url = (request.form.get("image_url") or "").strip()
-    file = request.files.get("image_file")
 
-    conn = db(); cur = conn.cursor()
-    cur.execute("select * from contests where id=%s", (1,))
-    contest = cur.fetchone()
-    if contest["status"] != "submission":
-        cur.close(); conn.close(); flash("지금은 제출 기간이 아닙니다.", "error"); return redirect(url_for("index"))
+    # 상태 확인
+    c = load_contest()
+    if c["status"] != "submission":
+        flash("지금은 제출 기간이 아닙니다.", "warning")
+        return redirect(url_for("index"))
 
-    cur.execute("select count(*) as c from outfits where contest_id=%s", (1,))
-    if cur.fetchone()["c"] >= contest["max_entries"]:
-        cur.close(); conn.close(); flash("제출이 마감되었습니다.", "error"); return redirect(url_for("index"))
+    if not image_url:
+        flash("이미지 주소는 필수입니다.", "error")
+        return redirect(url_for("index"))
 
-    cur.execute("select count(*) as c from outfits where contest_id=%s and creator_id=%s", (1, voter_id))
-    if cur.fetchone()["c"] > 0:
-        cur.close(); conn.close(); flash("이미 제출했습니다.", "error"); return redirect(url_for("index"))
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO entries (title, author, image_url, created_at) VALUES (?, ?, ?, ?)",
+        (title, author, image_url, now_kst().isoformat())
+    )
+    conn.commit()
+    conn.close()
 
-    saved_url = None
-    if file and file.filename and file_allowed(file.filename):
-        ext = file.filename.rsplit(".",1)[1].lower()
-        fname = f"{uuid.uuid4().hex}.{ext}"
-        path = os.path.join(UPLOAD_FOLDER, fname)
-        try:
-            file.save(path)
-        except Exception:
-            cur.close(); conn.close(); flash("파일 저장 중 오류가 발생했습니다.", "error"); return redirect(url_for("index"))
-        if not sniff_is_image(path):
-            try:
-                os.remove(path)
-            except Exception:
-                pass
-            cur.close(); conn.close(); flash("유효한 이미지 파일이 아닙니다.", "error"); return redirect(url_for("index"))
-        saved_url = f"/static/uploads/{fname}"
-    elif image_url:
-        saved_url = image_url
-    else:
-        cur.close(); conn.close(); flash("이미지 파일을 올리거나 이미지 URL을 입력하세요.", "error"); return redirect(url_for("index"))
+    flash("제출되었습니다!", "success")
+    return redirect(url_for("index"))
 
-    if not title:
-        title = "Untitled Outfit"
+@app.post("/vote/<int:entry_id>")
+def vote(entry_id: int):
+    """하루 2표 제한(KST), 5일 투표 기간 내에서만 가능."""
+    auto_close_voting_if_needed()
 
-    try:
-        cur.execute(
-            "insert into outfits(contest_id,title,image_url,creator_id) values(%s,%s,%s,%s)",
-            (1, title, saved_url, voter_id)
-        )
-        conn.commit()
-    except errors.UniqueViolation:
-        conn.rollback(); cur.close(); conn.close(); flash("제출 처리 중 충돌이 발생했습니다. 다시 시도해 주세요.", "error"); return redirect(url_for("index"))
+    # 콘테스트 상태 확인
+    c = load_contest()
+    if c["status"] != "voting":
+        flash("지금은 투표 기간이 아닙니다.", "warning")
+        return redirect(url_for("index"))
 
-    # 현재 인원 확인 후, 정원 도달 시 투표 시작. 상태 전환은 원자적으로 수행.
-    cur.execute("select count(*) as c from outfits where contest_id=%s", (1,))
-    count = cur.fetchone()["c"]
-    if count >= contest["max_entries"]:
-        opened = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
-        period_days = int(os.environ.get("VOTING_PERIOD_DAYS", 3))
-        ends = opened + datetime.timedelta(days=period_days)
-        cur.execute(
-            """
-            update contests
-            set status='voting', voting_opened_at=%s, voting_ends_at=%s
-            where id=1 and status='submission'
-            """,
-            (opened, ends)
-        )
-        conn.commit()
+    # 5일 투표 기간 내인지 확인
+    start_at = parse_iso(c["voting_start_at"])
+    end_at = parse_iso(c["voting_end_at"])
+    now = now_kst()
+    if not (start_at and end_at and start_at <= now < end_at):
+        # 기간 밖이면 자동으로 results로 넘겨두고 안내
+        if end_at and now >= end_at:
+            save_contest_status("results")
+        flash("투표 기간이 아닙니다.", "warning")
+        return redirect(url_for("index"))
 
-    cur.close(); conn.close()
-    flash("제출이 완료되었습니다!", "ok")
-    resp = redirect(url_for("index"))
-    return ensure_voter_cookie(resp, voter_id)
+    # 하루 2표 제한
+    today_count = get_today_vote_count(request)
+    if today_count >= 2:
+        flash("오늘은 이미 2표를 모두 사용했습니다. 내일 다시 투표할 수 있어요!", "warning")
+        return redirect(url_for("index"))
 
-@app.post("/vote/<int:oid>")
-def vote(oid):
-    voter_id, redirect_resp = ensure_voter()
-    if redirect_resp:
-        return redirect_resp
-
-    conn = db(); cur = conn.cursor()
-
-    cur.execute("select * from contests where id=%s", (1,))
-    contest = cur.fetchone()
-    if contest["status"] != "voting":
-        cur.close(); conn.close(); flash("지금은 투표 기간이 아닙니다.", "error"); return redirect(url_for("index"))
-
-    cur.execute("select count(*) as c from votes where contest_id=%s and voter_id=%s", (1, voter_id))
-    used = cur.fetchone()["c"]
-    if used >= contest["votes_per_user"]:
-        cur.close(); conn.close(); flash("투표 가능 횟수를 모두 사용했습니다.", "error"); return redirect(url_for("index"))
-
-    # 유효한 코디인지 + 자기 작품 제한
-    cur.execute("select id, creator_id from outfits where id=%s and contest_id=%s", (oid, 1))
+    # 존재하는 참가작인지 확인
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM entries WHERE id = ?;", (entry_id,))
     row = cur.fetchone()
     if not row:
-        cur.close(); conn.close(); flash("해당 코디가 없습니다.", "error"); return redirect(url_for("index"))
-    if row["creator_id"] == voter_id:
-        cur.close(); conn.close(); flash("자기 작품에는 투표할 수 없습니다.", "error"); return redirect(url_for("index"))
+        conn.close()
+        flash("해당 참가작을 찾을 수 없습니다.", "error")
+        return redirect(url_for("index"))
 
-    try:
-        cur.execute("insert into votes(contest_id,outfit_id,voter_id) values(%s,%s,%s)", (1, oid, voter_id))
-        conn.commit()
-    except errors.UniqueViolation:
-        conn.rollback(); cur.close(); conn.close(); flash("이미 이 코디에 투표했거나 처리 중 충돌이 있었습니다.", "error"); return redirect(url_for("index"))
+    # 투표 반영 (entries.votes 증가 + votes 로그)
+    cur.execute("UPDATE entries SET votes = COALESCE(votes, 0) + 1 WHERE id = ?;", (entry_id,))
+    cur.execute(
+        "INSERT INTO votes (entry_id, ip, created_at) VALUES (?, ?, ?);",
+        (entry_id, request.remote_addr or "", now.isoformat())
+    )
+    conn.commit()
+    conn.close()
 
-    cur.close(); conn.close()
-    flash("투표되었습니다!", "ok")
-    resp = redirect(url_for("index"))
-    return ensure_voter_cookie(resp, voter_id)
-
-# ====== 관리자: 개별/전체 삭제 ======
-
-def _delete_local_image_if_exists(image_url: str):
-    if image_url and image_url.startswith("/static/uploads/"):
-        path = os.path.join(BASE_DIR, image_url.lstrip("/"))
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except Exception:
-            pass
-
-
-def _require_admin():
-    return bool(session.get("is_admin"))
-
-@app.post("/admin/delete/<int:oid>")
-def admin_delete(oid):
-    if not _require_admin():
-        return "Forbidden", 403
-
-    conn = db(); cur = conn.cursor()
-    cur.execute("select image_url from outfits where id=%s and contest_id=%s", (oid, 1))
-    row = cur.fetchone()
-    if row:
-        _delete_local_image_if_exists(row["image_url"])
-        cur.execute("delete from outfits where id=%s and contest_id=%s", (oid, 1))
-        conn.commit()
-        flash("코디를 삭제했습니다.", "ok")
-    else:
-        flash("대상 코디가 없습니다.", "error")
-    cur.close(); conn.close()
-    return redirect(url_for("index"))
-
-@app.post("/admin/delete_all")
-def admin_delete_all():
-    if not _require_admin():
-        return "Forbidden", 403
-
-    conn = db(); cur = conn.cursor()
-    cur.execute("select image_url from outfits where contest_id=%s", (1,))
-    for r in cur.fetchall():
-        _delete_local_image_if_exists(r["image_url"])
-    cur.execute("delete from outfits where contest_id=%s", (1,))
-    conn.commit(); cur.close(); conn.close()
-    flash("모든 코디를 삭제했습니다.", "ok")
-    return redirect(url_for("index"))
+    # 쿠키에 오늘 투표 횟수 +1
+    resp = make_response(redirect(url_for("index")))
+    resp = inc_today_vote_count(resp, today_count)
+    left = max(0, 1 - today_count)  # 이번 표 포함 전 기준으로 계산
+    flash(f"투표가 반영되었습니다. (오늘 남은 표: {left}표)", "success")
+    return resp
 
 @app.get("/results")
 def results():
-    conn = db(); cur = conn.cursor()
-    cur.execute("select * from contests where id=%s", (1,))
-    contest = cur.fetchone()
+    auto_close_voting_if_needed()
 
-    if not contest or contest["status"] != "closed":
-        cur.close(); conn.close(); flash("아직 결과를 볼 수 없습니다.", "error"); return redirect(url_for("index"))
+    conn = get_db()
+    cur = conn.cursor()
+    c = load_contest(cur)
 
-    cur.execute(
-        """
-        with vc as (
-          select outfit_id, count(*) as votes
-          from votes
-          where contest_id=1
-          group by outfit_id
-        )
-        select o.*, coalesce(vc.votes, 0) as votes
-        from outfits o
-        left join vc on vc.outfit_id = o.id
-        where o.contest_id=1
-        order by votes desc, o.created_at asc
-        limit 3
-        """
+    # 집계 (내림차순)
+    cur.execute("SELECT * FROM entries ORDER BY votes DESC, id ASC;")
+    ranking = cur.fetchall()
+    conn.close()
+
+    return render_template("results.html", contest=c, ranking=ranking)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 관리자 라우트: 로그인/로그아웃, 5일 투표 시작, 초기화
+# ──────────────────────────────────────────────────────────────────────────────
+@app.post("/admin/login")
+def admin_login():
+    key = request.form.get("key", "")
+    if key == ADMIN_KEY:
+        session["is_admin"] = True
+        flash("관리자 로그인 성공", "success")
+    else:
+        flash("관리자 키가 올바르지 않습니다.", "error")
+    return redirect(url_for("results"))
+
+@app.post("/admin/logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    flash("관리자 로그아웃", "info")
+    return redirect(url_for("results"))
+
+@app.post("/admin/start_voting_5days")
+@admin_required
+def admin_start_voting_5days():
+    """
+    제출 단계 -> 투표 단계 전환.
+    지금 시각(KST)을 시작 시각으로 하고, 정확히 5일 뒤에 종료되도록 설정.
+    """
+    c = load_contest()
+    if c["status"] != "submission":
+        flash("현재 상태에서 투표를 시작할 수 없습니다.", "warning")
+        return redirect(url_for("results"))
+
+    start = now_kst()
+    end = start + timedelta(days=5)  # 5일 투표 기간
+    save_contest_status("voting", start, end)
+    flash(
+        f"투표를 시작했습니다. (시작: {start.strftime('%Y-%m-%d %H:%M')}, 종료: {end.strftime('%Y-%m-%d %H:%M')})",
+        "success",
     )
-    top3 = cur.fetchall()
-    cur.close(); conn.close()
-    return render_template("results.html", contest=contest, top3=top3)
-
-@app.route("/admin/close", methods=["GET", "POST"])
-def admin_close():
-    if not _require_admin():
-        return "Forbidden", 403
-    conn = db(); cur = conn.cursor()
-    cur.execute("update contests set status='closed' where id=1")
-    conn.commit(); cur.close(); conn.close()
-    flash("투표가 강제로 종료되었습니다.", "ok")
     return redirect(url_for("index"))
 
-@app.get("/admin/status")
-def admin_status():
-    conn = db(); cur = conn.cursor()
-    cur.execute("select status, voting_opened_at, voting_ends_at from contests where id=1")
-    row = cur.fetchone(); cur.close(); conn.close()
-    if not row:
-        return "No contest found"
-    return f"status={row['status']} opened={row['voting_opened_at']} ends={row['voting_ends_at']}"
+@app.post("/admin/reset")
+@admin_required
+def admin_reset():
+    """
+    - 모든 제출/투표 데이터 삭제
+    - 상태를 'submission'으로 되돌림
+    - 투표 기간(시작/종료)도 초기화
+    """
+    conn = get_db()
+    cur = conn.cursor()
 
-# 앱 시작 시 스키마 보장
-init_db()
+    # votes, entries 모두 삭제
+    cur.execute("DELETE FROM votes;")
+    cur.execute("DELETE FROM entries;")
 
+    # 상태 초기화
+    cur.execute(
+        "UPDATE contest SET status = 'submission', voting_start_at = NULL, voting_end_at = NULL WHERE id = 1;"
+    )
+
+    conn.commit()
+    conn.close()
+
+    flash("전체 초기화 완료! 이제 제출 단계로 돌아갑니다.", "success")
+    return redirect(url_for("index"))
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 앱 실행
+# ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    # 개발용 서버 실행: 실제 배포는 WSGI/ASGI 서버 사용
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
