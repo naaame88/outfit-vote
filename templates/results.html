@@ -67,21 +67,16 @@
       </section>
     {% endif %}
 
-    <!-- 관리자 -->
+    <!-- 관리자: 관리자일 때만 표시 -->
+    {% if session.get('is_admin') %}
     <section class="mt-8">
       <h2 class="section-title mb-3">관리자</h2>
-      {% if session.get('is_admin') %}
-        <form action="{{ url_for('admin_reset') }}" method="post"
-              onsubmit="return confirm('전체 초기화 후 제출 단계로 되돌립니다. 진행할까요?')">
-          <button class="btn-outline btn-shadow" type="submit">전체 초기화하고 처음(제출)부터 시작</button>
-        </form>
-      {% else %}
-        <div class="text-sm">
-          <a class="underline" href="{{ url_for('index') }}?key={{ 'changeme' }}">관리자 로그인</a>
-          <span class="text-stone-500">· 배포 시 <code>ADMIN_KEY</code> 환경변수를 설정하세요.</span>
-        </div>
-      {% endif %}
+      <form action="{{ url_for('admin_reset') }}" method="post"
+            onsubmit="return confirm('전체 초기화 후 제출 단계로 되돌립니다. 진행할까요?')">
+        <button class="btn-outline btn-shadow" type="submit">전체 초기화하고 처음(제출)부터 시작</button>
+      </form>
     </section>
+    {% endif %}
 
     <div class="mt-6">
       <a class="btn-angel" href="{{ url_for('index') }}">메인으로 돌아가기</a>
@@ -89,4 +84,5 @@
   </main>
 </body>
 </html>
+
 

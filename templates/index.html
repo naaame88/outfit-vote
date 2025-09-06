@@ -57,7 +57,7 @@
       {% endif %}
     {% endwith %}
 
-    <!-- 제출 영역 (제출 단계 or 이미 제출한 경우 갤러리 노출 로직은 서버에서 show_gallery로 처리) -->
+    <!-- 제출 영역 -->
     {% if s == 'submission' %}
       <section class="card-angel p-4 md:p-6 mb-6">
         <h2 class="section-title mb-3">코디 제출</h2>
@@ -82,7 +82,7 @@
       </section>
     {% endif %}
 
-    <!-- 투표 가능 횟수(하루) -->
+    <!-- 투표 가능 횟수 -->
     {% if s == 'voting' %}
       <div class="mb-4 text-sm">
         <strong>남은 표</strong> · 오늘 {{ votes_left }}표 남음
@@ -137,39 +137,35 @@
       {% endif %}
     </section>
 
-    <!-- 관리자 -->
+    <!-- 관리자 섹션: 관리자일 때만 노출 -->
+    {% if show_admin %}
     <section class="mt-8">
       <h2 class="section-title mb-3">관리자</h2>
-      {% if show_admin %}
-        <div class="flex flex-wrap gap-2">
-          <form action="{{ url_for('admin_delete_all') }}" method="post"
-                onsubmit="return confirm('모든 제출을 삭제할까요?')">
-            <button class="btn-outline btn-shadow" type="submit">전체 삭제</button>
-          </form>
-          <form action="{{ url_for('admin_start_voting_5days') }}" method="post">
-            <button class="btn-angel btn-shadow" type="submit">투표 시작 ({{ contest['votes_per_user'] }}표/일, {{ (contest['voting_ends_at'] and '지정됨') or '기본 5일' }})</button>
-          </form>
-          <form action="{{ url_for('admin_close') }}" method="post">
-            <button class="btn-angel btn-shadow" type="submit">투표 강제 종료</button>
-          </form>
-          <form action="{{ url_for('admin_reset') }}" method="post"
-                onsubmit="return confirm('전체 초기화 후 제출 단계로 되돌립니다. 진행할까요?')">
-            <button class="btn-outline btn-shadow" type="submit">전체 초기화</button>
-          </form>
-        </div>
-        <div class="text-sm text-stone-500 mt-2">
-          상태 확인: <a class="underline" href="{{ url_for('admin_status') }}">/admin/status</a>
-        </div>
-      {% else %}
-        <div class="text-sm">
-          <a class="underline" href="{{ url_for('index') }}?key={{ 'changeme' }}">관리자 로그인</a>
-          <span class="text-stone-500">· 배포 시 <code>ADMIN_KEY</code> 환경변수를 설정하세요.</span>
-        </div>
-      {% endif %}
+      <div class="flex flex-wrap gap-2">
+        <form action="{{ url_for('admin_delete_all') }}" method="post"
+              onsubmit="return confirm('모든 제출을 삭제할까요?')">
+          <button class="btn-outline btn-shadow" type="submit">전체 삭제</button>
+        </form>
+        <form action="{{ url_for('admin_start_voting_5days') }}" method="post">
+          <button class="btn-angel btn-shadow" type="submit">투표 시작</button>
+        </form>
+        <form action="{{ url_for('admin_close') }}" method="post">
+          <button class="btn-angel btn-shadow" type="submit">투표 강제 종료</button>
+        </form>
+        <form action="{{ url_for('admin_reset') }}" method="post"
+              onsubmit="return confirm('전체 초기화 후 제출 단계로 되돌립니다. 진행할까요?')">
+          <button class="btn-outline btn-shadow" type="submit">전체 초기화</button>
+        </form>
+      </div>
+      <div class="text-sm text-stone-500 mt-2">
+        상태 확인: <a class="underline" href="{{ url_for('admin_status') }}">/admin/status</a>
+      </div>
     </section>
+    {% endif %}
   </main>
 </body>
 </html>
+
 
 
 
