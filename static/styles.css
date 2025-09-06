@@ -66,25 +66,25 @@ body.angel-bg{
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: shine-move 11s ease-in-out infinite; /* ← 속도 느리게(기존 3.2s → 6s), 가감속 */
+  animation: shine-move 11s ease-in-out infinite;
 }
 
 @keyframes shine-move{
   0%   { background-position: 260% 0; }
-  50%  { background-position:   80% 0; } /* 중앙을 너무 빨리 지나치지 않게 */
+  50%  { background-position:   80% 0; }
   100% { background-position:    0% 0; }
 }
 
 /* — 공통 톤 — */
 :root{
-  --angel-ink: #57534e;       /* stone-600 */
-  --angel-gold: #d4af37;      /* 은은한 골드 */
-  --angel-rose: #eab8c0;      /* 로즈톤 */
-  --angel-blue: #c5d7f2;      /* 페일 블루 */
-  --angel-cream: #fffaf7;     /* 크림 */
+  --angel-ink: #57534e;
+  --angel-gold: #d4af37;
+  --angel-rose: #eab8c0;
+  --angel-blue: #c5d7f2;
+  --angel-cream: #fffaf7;
 }
 
-/* 제목 광륜 효과 (과함 주의, 미세하게만) */
+/* 제목 광륜 효과 */
 .halo{
   text-shadow:
     0 1px 0 rgba(255,255,255,.7),
@@ -174,20 +174,20 @@ body.angel-bg{
   backdrop-filter: blur(6px);
   background: rgba(255,255,255,.65);
   border: 1px solid rgba(255,255,255,.6);
-  border-left: 4px solid #d6bfa6; /* 베이지 라인 */
+  border-left: 4px solid #d6bfa6;
   padding:.9rem 1rem;
   border-radius: .9rem;
-  color: #7a6652; /* 글자색도 베이지 톤 */
+  color: #7a6652;
 }
 
 .alert-error{
   @apply glass;
-  border-left: 4px solid #ef4444; /* red-500 */
+  border-left: 4px solid #ef4444;
   padding:.9rem 1rem; border-radius: .9rem;
 }
 .alert-info{
   @apply glass;
-  border-left: 4px solid #60a5fa; /* blue-400 */
+  border-left: 4px solid #60a5fa;
   padding:.9rem 1rem; border-radius: .9rem;
 }
 
@@ -203,13 +203,12 @@ body.angel-bg{
 }
 .admin-x:hover{ transform: scale(1.05); }
 
-/* 작은 아이콘 (하트/엔젤) — 폰트 없이 심볼 느낌 */
+/* 작은 아이콘 */
 .i-heart::before{ content:"♥"; display:inline-block; transform: translateY(-1px); }
 .i-angel::before{ content:"✧"; display:inline-block; transform: translateY(-1px); }
 
-/* 결과 배경 — 사용자가 제공한 월페이퍼로 교체 */
+/* 결과 배경 */
 .result-bg{
-  /* 이미지를 /static/img/result-bg.jpg 로 저장해 주세요 (파일명 자유) */
   background-image: url("/static/img/result-bg.jpg");
   background-size: cover;
   background-position: center;
@@ -226,25 +225,13 @@ body.angel-bg{
   border:1px solid rgba(234,184,192,.55);
   box-shadow: 0 8px 20px rgba(234,184,192,.25);
 }
-.rank-1{
-  background: linear-gradient(180deg,#fffdf4,#fff4cc);
-  color:#6a541e;
-  border-color:#e9d48f;
-}
-.rank-2{
-  background: linear-gradient(180deg,#f7f9ff,#e6edff);
-  color:#435179;
-  border-color:#c9d6ff;
-}
-.rank-3{
-  background: linear-gradient(180deg,#fff7f2,#ffe3d3);
-  color:#8a5332;
-  border-color:#f3c6a8;
-}
+.rank-1{ background: linear-gradient(180deg,#fffdf4,#fff4cc); color:#6a541e; border-color:#e9d48f; }
+.rank-2{ background: linear-gradient(180deg,#f7f9ff,#e6edff); color:#435179; border-color:#c9d6ff; }
+.rank-3{ background: linear-gradient(180deg,#fff7f2,#ffe3d3); color:#8a5332; border-color:#f3c6a8; }
 
-/* 결과 카드 약간 더 강한 그림자 */
+/* 결과 카드 */
 .card-angel {
-  background: rgba(255, 255, 255, 0.75); /* 패턴이 은은히 보이는 정도 */
+  background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(4px);
   border: 1px solid rgba(255,255,255,0.6);
   border-radius: 1.25rem;
@@ -252,15 +239,12 @@ body.angel-bg{
   overflow: hidden;
   transition: transform .25s ease, box-shadow .25s ease;
 }
-
 .card-angel:hover{
   transform: translateY(-2px);
   box-shadow: 0 16px 36px rgba(149,132,159,.3);
 }
 
-/* ===== Elegant Card Animations ===== */
-
-/* 1) 기본 호버: 살짝 떠오르고 그림자 강화 */
+/* Elegant Card Animations */
 .card-angel{
   transition: transform .45s cubic-bezier(.22,.61,.36,1), box-shadow .45s ease;
   will-change: transform;
@@ -269,14 +253,10 @@ body.angel-bg{
   transform: translateY(-6px) scale(1.012);
   box-shadow: 0 22px 48px rgba(47,42,37,.22);
 }
-
-/* 2) 입장 애니메이션(부드럽게 위로 등장 + 살짝 페이드) */
 @keyframes fadeUpElegant{
   from{ opacity:0; transform: translateY(14px) scale(.992); }
-  to  { opacity:1; transform: translateY(0)    scale(1);    }
+  to  { opacity:1; transform: translateY(0) scale(1); }
 }
-
-/* 결과 화면에서 카드가 순서대로 등장하도록 지연 부여 */
 .results-stagger > .card-angel{
   animation: fadeUpElegant .6s cubic-bezier(.22,.61,.36,1) both;
 }
@@ -284,7 +264,6 @@ body.angel-bg{
 .results-stagger > .card-angel:nth-child(2){ animation-delay: .12s; }
 .results-stagger > .card-angel:nth-child(3){ animation-delay: .18s; }
 
-/* 접근성: 모션 최소화 설정 존중 */
 @media (prefers-reduced-motion: reduce){
   .card-angel,
   .results-stagger > .card-angel{
@@ -293,3 +272,4 @@ body.angel-bg{
     transform: none !important;
   }
 }
+
