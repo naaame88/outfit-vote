@@ -382,7 +382,7 @@ def submit():
     # 정원 도달 시 자동 투표 시작(기간: 기본 5일)
     cur.execute("select count(*) as c from outfits where contest_id=%s", (1,))
     count = cur.fetchone()["c"]
-    if count >= contest["max_entries"]]:
+    if count >= contest["max_entries"]:
         opened = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
         ends = opened + datetime.timedelta(days=VOTING_PERIOD_DAYS)
         cur.execute(
