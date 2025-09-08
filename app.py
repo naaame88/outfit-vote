@@ -14,6 +14,9 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg import errors
 
+# === HTTP for Supabase Storage ===
+import requests
+
 # ============================================================================
 # 기본 설정
 # ============================================================================
@@ -23,7 +26,7 @@ app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 업로드 8MB 제한
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "static", "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # (레거시 호환용 — 외부 URL도 허용)
 
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "changeme")  # 배포 시 환경변수로 교체
 
@@ -31,6 +34,54 @@ ADMIN_KEY = os.environ.get("ADMIN_KEY", "changeme")  # 배포 시 환경변수�
 VOTES_PER_DAY = int(os.environ.get("VOTES_PER_DAY", 2))
 # 투표 기간(일) 기본 5일
 VOTING_PERIOD_DAYS = int(os.environ.get("VOTING_PERIOD_DAYS", 5))
+
+# Supabase Storage 설정
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+SB_BUCKET = os.environ.get("SB_BUCKET", "uploads")
+
+def supa_enabled() -> bool:
+    return bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and SB_BUCKET)
+
+def supa_public_url(bucket: str, path: str) -> str:
+    # 공개 버킷 전제 (public on)
+    return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{path.lstrip('/')}"
+
+def supa_upload_bytes(bucket: str, path: str, data: bytes, content_type: str = None) -> str:
+    """
+    Storage 업로드 (Service Role Key 사용).
+    성공 시 공개 URL을 반환. 실패 시 예외 발생.
+    """
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path.lstrip('/')}"
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": content_type or "application/octet-stream",
+        "x-upsert": "true",  # 같은 경로면 덮어쓰기
+    }
+    resp = requests.post(url, headers=headers, data=data, timeout=30)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Supabase upload failed: {resp.status_code} {resp.text}")
+    return supa_public_url(bucket, path)
+
+def supa_delete_public_url(public_url: str) -> None:
+    """
+    공개 URL을 받아 Storage 원본 삭제. (존재하지 않아도 조용히 통과)
+    """
+    prefix = f"{SUPABASE_URL}/storage/v1/object/public/"
+    if not public_url or not public_url.startswith(prefix):
+        return
+    # public/{bucket}/{path...}
+    rel = public_url[len(prefix):]  # "{bucket}/{path}"
+    bucket, _, path = rel.partition("/")
+    if not bucket or not path:
+        return
+    url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
+    headers = {"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"}
+    # Storage API는 DELETE 메소드 지원
+    try:
+        requests.delete(url, headers=headers, timeout=15)
+    except Exception:
+        pass
 
 # ============================================================================
 # DB 유틸 (Supabase/Heroku Postgres)
@@ -56,8 +107,8 @@ def init_db():
           created_at timestamptz not null default now(),
           voting_opened_at timestamptz,
           voting_ends_at timestamptz,
-          max_entries integer not null default 10,    -- 총 수용 인원
-          votes_per_user integer not null default 2   -- (하루 표 수)
+          max_entries integer not null default 10,
+          votes_per_user integer not null default 2
         );
 
         create table if not exists outfits(
@@ -78,7 +129,7 @@ def init_db():
         );
         """
     )
-    # 유니크 인덱스(한 사람이 같은 작품에 중복 투표 방지, 1인 1제출)
+    # 유니크 인덱스
     cur.execute(
         """
         do $$ begin
@@ -99,7 +150,6 @@ def init_db():
             (VOTES_PER_DAY,)
         )
     else:
-        # votes_per_user를 .env의 VOTES_PER_DAY와 맞춤(선택)
         cur.execute("update contests set votes_per_user=%s where id=1", (VOTES_PER_DAY,))
     conn.commit(); cur.close(); conn.close()
 
@@ -107,7 +157,6 @@ def init_db():
 # 쿠키/보안 유틸
 # ============================================================================
 def ensure_voter_cookie(resp, voter_id):
-    """응답에 voter_id 쿠키 보장(없으면 생성)"""
     if not voter_id:
         voter_id = str(uuid.uuid4())
     resp.set_cookie(
@@ -120,10 +169,6 @@ def ensure_voter_cookie(resp, voter_id):
     return resp
 
 def ensure_voter():
-    """
-    쓰기 라우트 보호: 쿠키 없으면 한 번 리다이렉트하여 쿠키 심은 뒤 재요청 유도.
-    반환: (voter_id, redirect_response or None)
-    """
     vid = request.cookies.get("voter_id")
     if not vid:
         vid = str(uuid.uuid4())
@@ -144,15 +189,14 @@ def get_voter_id():
 def file_allowed(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in {"png", "jpg", "jpeg", "gif", "webp"}
 
-def sniff_is_image(path):
-    mime, _ = guess_type(path)
+def sniff_is_image_by_name(name_or_path: str):
+    mime, _ = guess_type(name_or_path)
     return mime in {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 # ============================================================================
 # 상태 자동 전환
 # ============================================================================
 def phase_auto_close_if_needed():
-    """voting 종료 시간이 지났으면 closed로 전환"""
     conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select status, voting_ends_at from contests where id=%s", (1,))
     row = cur.fetchone()
@@ -245,8 +289,7 @@ def index():
         outfits=outfits,
         entries_count=entries_count,
         i_submitted=i_submitted,
-        # 과거 템플릿 호환을 위해 이름 유지하되 '오늘 남은 표'로 의미 변경
-        my_votes=my_votes_today,
+        my_votes=my_votes_today,  # 템플릿 호환
         counts=counts,
         votes_left=max(0, int(contest["votes_per_user"]) - int(my_votes_today)),
         show_gallery=show_gallery,
@@ -287,27 +330,36 @@ def submit():
         flash("이미 제출했습니다.", "error")
         return redirect(url_for("index"))
 
-    # 이미지 저장 (파일 또는 URL)
+    # 이미지 저장 (파일 → Supabase Storage, 또는 외부 URL)
     saved_url = None
     if file and file.filename and file_allowed(file.filename):
         ext = file.filename.rsplit(".", 1)[1].lower()
-        fname = f"{uuid.uuid4().hex}.{ext}"
-        path = os.path.join(UPLOAD_FOLDER, fname)
-        try:
-            file.save(path)
-        except Exception:
-            cur.close(); conn.close()
-            flash("파일 저장 중 오류가 발생했습니다.", "error")
-            return redirect(url_for("index"))
-        if not sniff_is_image(path):
-            try: os.remove(path)
-            except Exception: pass
+        if not sniff_is_image_by_name(file.filename):
             cur.close(); conn.close()
             flash("유효한 이미지 파일이 아닙니다.", "error")
             return redirect(url_for("index"))
-        saved_url = f"/static/uploads/{fname}"
+
+        # 저장 경로: contest-1/<voter_id>/<uuid>.<ext>
+        obj_path = f"contest-1/{voter_id}/{uuid.uuid4().hex}.{ext}"
+        content_type = file.mimetype or guess_type(file.filename)[0] or "application/octet-stream"
+        try:
+            data = file.read()
+            if not supa_enabled():
+                # 혹시 환경변수가 비어 있으면 레거시 로컬 저장 (안정성)
+                fname = obj_path.split("/")[-1]
+                local_path = os.path.join(UPLOAD_FOLDER, fname)
+                with open(local_path, "wb") as f:
+                    f.write(data)
+                saved_url = f"/static/uploads/{fname}"
+            else:
+                saved_url = supa_upload_bytes(SB_BUCKET, obj_path, data, content_type)
+        except Exception as e:
+            cur.close(); conn.close()
+            flash("파일 저장 중 오류가 발생했습니다.", "error")
+            return redirect(url_for("index"))
+
     elif image_url:
-        saved_url = image_url
+        saved_url = image_url  # 외부 URL 허용 (이전과 동일)
     else:
         cur.close(); conn.close()
         flash("이미지 파일을 올리거나 이미지 URL을 입력하세요.", "error")
@@ -330,7 +382,7 @@ def submit():
     # 정원 도달 시 자동 투표 시작(기간: 기본 5일)
     cur.execute("select count(*) as c from outfits where contest_id=%s", (1,))
     count = cur.fetchone()["c"]
-    if count >= contest["max_entries"]:
+    if count >= contest["max_entries"]]:
         opened = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
         ends = opened + datetime.timedelta(days=VOTING_PERIOD_DAYS)
         cur.execute(
@@ -411,6 +463,7 @@ def vote(oid):
 # 관리자: 삭제/초기화/강제 시작/종료
 # ============================================================================
 def _delete_local_image_if_exists(image_url: str):
+    # 레거시 로컬 경로 제거
     if image_url and image_url.startswith("/static/uploads/"):
         path = os.path.join(BASE_DIR, image_url.lstrip("/"))
         try:
@@ -418,6 +471,13 @@ def _delete_local_image_if_exists(image_url: str):
                 os.remove(path)
         except Exception:
             pass
+
+def _delete_storage_if_public_url(image_url: str):
+    # Supabase Storage 공개 URL이면 원본 삭제
+    try:
+        supa_delete_public_url(image_url)
+    except Exception:
+        pass
 
 def _require_admin():
     return bool(session.get("is_admin"))
@@ -431,7 +491,10 @@ def admin_delete(oid):
     cur.execute("select image_url from outfits where id=%s and contest_id=%s", (oid, 1))
     row = cur.fetchone()
     if row:
+        # 파일도 함께 삭제 (Storage 또는 로컬)
+        _delete_storage_if_public_url(row["image_url"])
         _delete_local_image_if_exists(row["image_url"])
+
         cur.execute("delete from outfits where id=%s and contest_id=%s", (oid, 1))
         conn.commit()
         flash("코디를 삭제했습니다.", "ok")
@@ -448,6 +511,7 @@ def admin_delete_all():
     conn = db(); cur = conn.cursor(row_factory=dict_row)
     cur.execute("select image_url from outfits where contest_id=%s", (1,))
     for r in cur.fetchall():
+        _delete_storage_if_public_url(r["image_url"])
         _delete_local_image_if_exists(r["image_url"])
     cur.execute("delete from outfits where contest_id=%s", (1,))
     conn.commit(); cur.close(); conn.close()
@@ -464,6 +528,7 @@ def admin_reset():
     # 업로드 파일 삭제
     cur.execute("select image_url from outfits where contest_id=%s", (1,))
     for r in cur.fetchall():
+        _delete_storage_if_public_url(r["image_url"])
         _delete_local_image_if_exists(r["image_url"])
 
     # 테이블 정리
@@ -566,17 +631,16 @@ def results():
     )
     ranking = cur.fetchall()
 
-    # Top3 (템플릿에서 쓸 수도 있으므로 함께 제공)
+    # Top3
     top3 = ranking[:3] if ranking else []
 
     cur.close(); conn.close()
     return render_template("results.html", contest=contest, ranking=ranking, top3=top3)
 
 # ============================================================================
-# 앱 시작 시 스키마 보장 (Flask 3: before_first_request 제거 대체)
+# 앱 시작 시 스키마 보장
 # ============================================================================
 init_db()
 
 if __name__ == "__main__":
-    # 로컬 실행용. 배포는 Procfile의 gunicorn 커맨드 사용
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
